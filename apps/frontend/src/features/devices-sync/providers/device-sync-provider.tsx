@@ -3,29 +3,29 @@
 // Uses state machine model: FRESH → REGISTERED → READY (+ STALE, RECOVERY)
 // ===========================================================================
 
+import { useWealthfolioConnect } from "@/features/wealthfolio-connect";
 import {
   createContext,
-  useContext,
-  useReducer,
-  useEffect,
   useCallback,
+  useContext,
+  useEffect,
+  useReducer,
   useRef,
   type ReactNode,
 } from "react";
-import { useWealthfolioConnect } from "@/features/wealthfolio-connect";
-import { syncService, type EnableSyncResult } from "../services/sync-service";
 import * as crypto from "../crypto";
+import { syncService, type EnableSyncResult } from "../services/sync-service";
 import type {
-  SyncState,
-  PairingSession,
   ClaimerSession,
   Device,
-  TrustedDeviceSummary,
   DeviceSyncState,
-  SyncIdentity,
   KeyBundlePayload,
+  PairingSession,
+  SyncIdentity,
+  SyncState,
+  TrustedDeviceSummary,
 } from "../types";
-import { SyncError, SyncErrorCodes, INITIAL_SYNC_STATE, SyncStates } from "../types";
+import { INITIAL_SYNC_STATE, SyncError, SyncErrorCodes, SyncStates } from "../types";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // State Management
@@ -348,7 +348,10 @@ export function DeviceSyncProvider({ children }: { children: ReactNode }) {
           try {
             await syncService.triggerSyncCycle();
           } catch (cycleError) {
-            console.warn("[DeviceSyncProvider] Initial sync cycle after bootstrap failed", cycleError);
+            console.warn(
+              "[DeviceSyncProvider] Initial sync cycle after bootstrap failed",
+              cycleError,
+            );
           }
         }
 

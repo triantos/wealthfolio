@@ -2,12 +2,12 @@
 // Input form for the claimer to enter the pairing code
 // =====================================================
 
-import { useState, useEffect, useRef } from "react";
-import { Input } from "@wealthfolio/ui/components/ui/input";
-import { Button } from "@wealthfolio/ui/components/ui/button";
-import { Icons } from "@wealthfolio/ui";
-import { usePlatform } from "@/hooks/use-platform";
 import { logger } from "@/adapters";
+import { usePlatform } from "@/hooks/use-platform";
+import { Icons } from "@wealthfolio/ui";
+import { Button } from "@wealthfolio/ui/components/ui/button";
+import { Input } from "@wealthfolio/ui/components/ui/input";
+import { useEffect, useRef, useState } from "react";
 
 interface EnterCodeProps {
   onSubmit: (code: string) => void;
