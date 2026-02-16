@@ -164,6 +164,7 @@ export {
   listenPortfolioUpdateError,
   listenMarketSyncComplete,
   listenMarketSyncStart,
+  listenMarketSyncError,
   listenBrokerSyncStart,
   listenBrokerSyncComplete,
   listenBrokerSyncError,

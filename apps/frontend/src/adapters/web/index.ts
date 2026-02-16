@@ -278,6 +278,7 @@ export {
   listenPortfolioUpdateError,
   listenMarketSyncStart,
   listenMarketSyncComplete,
+  listenMarketSyncError,
   listenFileDropHover,
   listenFileDrop,
   listenFileDropCancelled,
