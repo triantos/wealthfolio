@@ -1835,10 +1835,17 @@ impl ActivityServiceTrait for ActivityService {
                 base_symbol.to_string()
             };
 
+            // Parse quote_mode from the activity (same pattern as prepare_new_activity)
+            let is_manual_quote = activity
+                .quote_mode
+                .as_deref()
+                .map(|m| m.to_uppercase() == "MANUAL")
+                .unwrap_or(false);
+
             // Equities (Investment + Equity instrument) must have a resolved exchange MIC
             let is_equity = effective_kind == AssetKind::Investment
                 && effective_instrument_type.as_ref() == Some(&InstrumentType::Equity);
-            if is_equity && resolved_mic.is_none() {
+            if is_equity && resolved_mic.is_none() && !is_manual_quote {
                 activity.is_valid = false;
                 let mut errors = std::collections::HashMap::new();
                 errors.insert(

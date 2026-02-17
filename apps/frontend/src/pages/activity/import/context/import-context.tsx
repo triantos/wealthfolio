@@ -48,6 +48,7 @@ export interface DraftActivity {
   symbolName?: string;
   quoteCcy?: string;
   instrumentType?: string;
+  quoteMode?: string;
 
   // Validation state
   status: DraftActivityStatus;

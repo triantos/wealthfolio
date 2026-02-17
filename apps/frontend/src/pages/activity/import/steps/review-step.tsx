@@ -229,7 +229,13 @@ function mapSymbol(
   symbolMappings: Record<string, string>,
   symbolMappingMeta?: Record<
     string,
-    { exchangeMic?: string; symbolName?: string; quoteCcy?: string; instrumentType?: string }
+    {
+      exchangeMic?: string;
+      symbolName?: string;
+      quoteCcy?: string;
+      instrumentType?: string;
+      quoteMode?: string;
+    }
   >,
 ): {
   symbol: string | undefined;
@@ -237,6 +243,7 @@ function mapSymbol(
   symbolName?: string;
   quoteCcy?: string;
   instrumentType?: string;
+  quoteMode?: string;
 } {
   if (!csvSymbol) return { symbol: undefined };
 
@@ -249,6 +256,7 @@ function mapSymbol(
     symbolName: meta?.symbolName,
     quoteCcy: meta?.quoteCcy,
     instrumentType: meta?.instrumentType,
+    quoteMode: meta?.quoteMode,
   };
 }
 
@@ -495,6 +503,7 @@ function createDraftActivities(
       symbolName: mappedSymbolName,
       quoteCcy: mappedQuoteCcy,
       instrumentType: mappedInstrumentType,
+      quoteMode: mappedQuoteMode,
     } = mapSymbol(rawSymbol, symbolMappings, symbolMappingMeta);
     const quantity = parseNumericValue(rawQuantity, decimalSeparator, thousandsSeparator);
     const unitPrice = parseNumericValue(rawUnitPrice, decimalSeparator, thousandsSeparator);
@@ -528,6 +537,7 @@ function createDraftActivities(
       symbolName: mappedSymbolName,
       quoteCcy: mappedQuoteCcy,
       instrumentType: mappedInstrumentType,
+      quoteMode: mappedQuoteMode,
       quantity,
       unitPrice,
       amount,
@@ -643,6 +653,7 @@ export function ReviewStep() {
                 exchangeMic: draft.exchangeMic,
                 quoteCcy: draft.quoteCcy,
                 instrumentType: draft.instrumentType,
+                quoteMode: draft.quoteMode,
                 quantity: draft.quantity,
                 unitPrice: draft.unitPrice,
                 amount: draft.amount,
@@ -892,6 +903,7 @@ export function ReviewStep() {
           symbolName: result.longName,
           quoteCcy: result.currency,
           instrumentType: result.quoteType,
+          quoteMode: result.dataSource === "MANUAL" ? "MANUAL" : undefined,
         };
         const { symbol: _removed, ...otherErrors } = draft.errors;
         const merged = { ...draft, ...symbolUpdates };
@@ -931,6 +943,7 @@ export function ReviewStep() {
             symbolName: result.longName,
             quoteCcy: result.currency,
             instrumentType: result.quoteType,
+            quoteMode: result.dataSource === "MANUAL" ? "MANUAL" : undefined,
           };
         }
 

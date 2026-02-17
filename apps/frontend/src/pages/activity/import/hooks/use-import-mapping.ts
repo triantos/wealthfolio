@@ -427,6 +427,7 @@ export function useImportMapping({
                   symbolName: searchResult.longName,
                   quoteCcy: searchResult.currency,
                   instrumentType: searchResult.quoteType,
+                  quoteMode: searchResult.dataSource === "MANUAL" ? "MANUAL" : undefined,
                 },
               }
             : {}),

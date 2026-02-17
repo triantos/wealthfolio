@@ -138,8 +138,8 @@ const SearchResults = memo(
             );
           })}
 
-        {/* Create custom asset option - always visible when user has typed something */}
-        {!isLoading && query.length > 0 && (
+        {/* Create custom asset option - always visible */}
+        {!isLoading && (
           <>
             {hasResults && <CommandSeparator />}
             <CommandItem
@@ -531,7 +531,7 @@ const TickerSearchInput = forwardRef<HTMLButtonElement, SearchProps>(
               <SearchResults
                 isLoading={isLoading}
                 isError={isError}
-                query={debouncedQuery}
+                query={searchQuery}
                 results={sortedTickers}
                 selectedResult={selectedResult}
                 onSelect={handleSelectResult}
