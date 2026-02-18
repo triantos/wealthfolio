@@ -45,5 +45,5 @@ pub use enroll_service::{
     DeviceEnrollService, EnableSyncResult, EnrollServiceError, SyncIdentity, SyncState,
     SyncStateResult,
 };
-pub use error::{DeviceSyncError, Result};
+pub use error::{ApiRetryClass, DeviceSyncError, Result};
 pub use types::*;

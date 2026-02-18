@@ -9,6 +9,8 @@ import {
 } from "@/components/metric-display";
 import { Card, CardContent } from "@wealthfolio/ui/components/ui/card";
 import { Skeleton } from "@wealthfolio/ui/components/ui/skeleton";
+import { Icons } from "@wealthfolio/ui";
+import { Alert, AlertDescription } from "@wealthfolio/ui/components/ui/alert";
 import { PerformanceMetrics } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import React from "react";
@@ -16,6 +18,7 @@ import React from "react";
 export interface PerformanceGridProps {
   performance?: PerformanceMetrics | null;
   isLoading?: boolean;
+  performanceError?: string;
   className?: string;
   /** If true, shows only Volatility/MaxDrawdown and hides TWR/MWR (HOLDINGS mode doesn't track cash flows) */
   isHoldingsMode?: boolean;
@@ -24,9 +27,24 @@ export interface PerformanceGridProps {
 export const PerformanceGrid: React.FC<PerformanceGridProps> = ({
   performance,
   isLoading,
+  performanceError,
   className,
   isHoldingsMode = false,
 }) => {
+  if (performanceError) {
+    return (
+      <div className={cn("w-full", className)}>
+        <Alert
+          variant="warning"
+          className="flex flex-col items-center gap-2 text-center [&>svg+div]:translate-y-0 [&>svg]:static [&>svg~*]:pl-0"
+        >
+          <Icons.AlertTriangle className="size-5" />
+          <AlertDescription className="text-xs">{performanceError}</AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+
   if (isLoading || !performance) {
     return (
       <div className={cn("w-full", className)}>

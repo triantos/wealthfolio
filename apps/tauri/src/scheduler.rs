@@ -19,6 +19,11 @@ use crate::context::ServiceContext;
 /// - Performs the sync silently (no toast - user didn't request it)
 /// - Triggers portfolio update if activities were synced
 pub async fn run_startup_sync(handle: &AppHandle, context: &Arc<ServiceContext>) {
+    if !crate::services::is_connect_configured() {
+        debug!("Startup sync skipped: CONNECT_API_URL not configured");
+        return;
+    }
+
     info!("Running startup broker sync...");
 
     // Check subscription status first using ConnectService

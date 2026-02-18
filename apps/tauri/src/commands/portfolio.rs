@@ -105,6 +105,31 @@ pub async fn get_holding(
 }
 
 #[tauri::command]
+pub async fn get_asset_holdings(
+    state: State<'_, Arc<ServiceContext>>,
+    asset_id: String,
+) -> Result<Vec<Holding>, String> {
+    debug!("Get holdings for asset {} across all accounts", asset_id);
+    let base_currency = state.get_base_currency();
+    let accounts = state
+        .account_service()
+        .get_active_accounts()
+        .map_err(|e| format!("Failed to get accounts: {}", e))?;
+
+    let mut result = Vec::new();
+    for account in accounts {
+        if let Ok(Some(holding)) = state
+            .holdings_service()
+            .get_holding(&account.id, &asset_id, &base_currency)
+            .await
+        {
+            result.push(holding);
+        }
+    }
+    Ok(result)
+}
+
+#[tauri::command]
 pub async fn get_portfolio_allocations(
     state: State<'_, Arc<ServiceContext>>,
     account_id: String,
@@ -357,6 +382,12 @@ pub struct HoldingInput {
     pub average_cost: Option<String>,
     /// Exchange MIC code for new holdings (e.g., "XNAS", "XTSE"). Used when asset_id is not provided.
     pub exchange_mic: Option<String>,
+    /// Asset name for new custom assets
+    pub name: Option<String>,
+    /// Data source (e.g., "MANUAL" for custom assets) — sets quote mode to manual
+    pub data_source: Option<String>,
+    /// Asset kind (e.g., "INVESTMENT", "OTHER")
+    pub asset_kind: Option<String>,
 }
 
 /// Saves manual holdings for a HOLDINGS-mode account.
@@ -416,6 +447,9 @@ pub async fn save_manual_holdings(
             quantity,
             currency: holding.currency,
             average_cost,
+            name: holding.name,
+            data_source: holding.data_source,
+            asset_kind: holding.asset_kind,
         });
     }
 
@@ -431,6 +465,7 @@ pub async fn save_manual_holdings(
         state.asset_service(),
         state.fx_service(),
         state.snapshot_service(),
+        state.quote_service(),
     );
 
     let asset_ids = manual_snapshot_service
@@ -783,6 +818,9 @@ async fn import_single_snapshot(
             quantity,
             currency: pos_input.currency.clone(),
             average_cost,
+            name: None,
+            data_source: None,
+            asset_kind: None,
         });
     }
 
@@ -801,6 +839,7 @@ async fn import_single_snapshot(
         state.asset_service(),
         state.fx_service(),
         state.snapshot_service(),
+        state.quote_service(),
     );
 
     manual_snapshot_service
@@ -1106,6 +1145,36 @@ pub async fn delete_snapshot(
         "Deleted {:?} snapshot for account {} on date {}",
         snapshot.source, account_id, date
     );
+
+    // If no user-created snapshots remain, clean up orphan SYNTHETIC snapshots
+    let remaining = state
+        .snapshot_repository()
+        .get_snapshots_by_account(&account_id, None, None)
+        .map_err(|e| format!("Failed to check remaining snapshots: {}", e))?;
+
+    let has_user_snapshots = remaining
+        .iter()
+        .any(|s| s.source != SnapshotSource::Calculated && s.source != SnapshotSource::Synthetic);
+
+    if !has_user_snapshots {
+        let synthetic_dates: Vec<NaiveDate> = remaining
+            .iter()
+            .filter(|s| s.source == SnapshotSource::Synthetic)
+            .map(|s| s.snapshot_date)
+            .collect();
+        if !synthetic_dates.is_empty() {
+            state
+                .snapshot_repository()
+                .delete_snapshots_for_account_and_dates(&account_id, &synthetic_dates)
+                .await
+                .map_err(|e| format!("Failed to clean up synthetic snapshots: {}", e))?;
+            info!(
+                "Cleaned up {} orphan SYNTHETIC snapshots for account {}",
+                synthetic_dates.len(),
+                account_id
+            );
+        }
+    }
 
     // Trigger portfolio update to recalculate valuations
     let payload = PortfolioRequestPayload::builder()

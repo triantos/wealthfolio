@@ -22,7 +22,7 @@ use super::model::{DataSource, LatestQuotePair, Quote, ResolvedQuote, SymbolSear
 use super::store::{ProviderSettingsStore, QuoteStore};
 use super::sync::{QuoteSyncService, QuoteSyncServiceTrait, SyncResult};
 use super::sync_state::{QuoteSyncState, SymbolSyncPlan, SyncMode, SyncStateStore};
-use super::types::{AssetId, Day};
+use super::types::{quote_id, AssetId, Day, QuoteSource};
 use crate::activities::ActivityRepositoryTrait;
 use crate::assets::{
     Asset, AssetKind, AssetRepositoryTrait, InstrumentType, ProviderProfile, QuoteMode,
@@ -776,6 +776,21 @@ where
     }
 
     async fn update_quote(&self, quote: Quote) -> Result<Quote> {
+        let mut quote = quote;
+
+        // When source is MANUAL, regenerate the ID so provider sync can't overwrite it.
+        // If the old ID was provider-based (e.g. *_YAHOO), delete it first.
+        if quote.data_source == DataSource::Manual {
+            let day = Day::new(quote.timestamp.date_naive());
+            let asset_id = AssetId::new(&quote.asset_id);
+            let manual_id = quote_id(&asset_id, day, &QuoteSource::Manual);
+
+            if quote.id != manual_id {
+                let _ = self.quote_store.delete_quote(&quote.id).await;
+                quote.id = manual_id;
+            }
+        }
+
         self.quote_store.save_quote(&quote).await
     }
 

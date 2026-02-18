@@ -10,6 +10,7 @@ export const QueryKeys = {
   // Portfolio related keys
   HOLDINGS: "holdings",
   HOLDING: "holding",
+  ASSET_HOLDINGS: "assetHoldings",
   PORTFOLIO_ALLOCATIONS: "portfolioAllocations",
   HOLDINGS_BY_ALLOCATION: "holdingsByAllocation",
   INCOME_SUMMARY: "incomeSummary",

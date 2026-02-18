@@ -86,6 +86,9 @@ jobs:
 
       - name: Test
         run: cargo test --workspace
+        env:
+          # Required for outbox tests in storage-sqlite
+          CONNECT_API_URL: http://test.local
 
       - name: Build (src-server)
         run: cargo build -p wealthfolio-server --release

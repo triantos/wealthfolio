@@ -20,6 +20,8 @@ use super::model::{
 use crate::db::{get_connection, WriteHandle};
 use crate::errors::StorageError;
 use crate::schema::{asset_taxonomy_assignments, taxonomies, taxonomy_categories};
+use crate::sync::{write_outbox_event, OutboxWriteRequest};
+use wealthfolio_core::sync::{SyncEntity, SyncOperation};
 
 pub struct TaxonomyRepository {
     pool: Arc<Pool<r2d2::ConnectionManager<SqliteConnection>>>,
@@ -287,6 +289,16 @@ impl TaxonomyRepositoryTrait for TaxonomyRepository {
                         .get_result(conn)
                         .map_err(StorageError::from)?;
 
+                    write_outbox_event(
+                        conn,
+                        OutboxWriteRequest::new(
+                            SyncEntity::AssetTaxonomyAssignment,
+                            result.id.clone(),
+                            SyncOperation::Update,
+                            serde_json::to_value(&result)?,
+                        ),
+                    )?;
+
                     Ok(AssetTaxonomyAssignment::from(result))
                 },
             )
@@ -297,9 +309,21 @@ impl TaxonomyRepositoryTrait for TaxonomyRepository {
         let id = id.to_string();
         self.writer
             .exec(move |conn: &mut SqliteConnection| -> Result<usize> {
-                Ok(diesel::delete(asset_taxonomy_assignments::table.find(&id))
+                let affected = diesel::delete(asset_taxonomy_assignments::table.find(&id))
                     .execute(conn)
-                    .map_err(StorageError::from)?)
+                    .map_err(StorageError::from)?;
+                if affected > 0 {
+                    write_outbox_event(
+                        conn,
+                        OutboxWriteRequest::new(
+                            SyncEntity::AssetTaxonomyAssignment,
+                            id.clone(),
+                            SyncOperation::Delete,
+                            serde_json::json!({ "id": id }),
+                        ),
+                    )?;
+                }
+                Ok(affected)
             })
             .await
     }
@@ -309,13 +333,34 @@ impl TaxonomyRepositoryTrait for TaxonomyRepository {
         let taxonomy_id = taxonomy_id.to_string();
         self.writer
             .exec(move |conn: &mut SqliteConnection| -> Result<usize> {
-                Ok(diesel::delete(
+                let existing_ids = asset_taxonomy_assignments::table
+                    .filter(asset_taxonomy_assignments::asset_id.eq(&asset_id))
+                    .filter(asset_taxonomy_assignments::taxonomy_id.eq(&taxonomy_id))
+                    .select(asset_taxonomy_assignments::id)
+                    .load::<String>(conn)
+                    .map_err(StorageError::from)?;
+
+                let affected = diesel::delete(
                     asset_taxonomy_assignments::table
                         .filter(asset_taxonomy_assignments::asset_id.eq(&asset_id))
                         .filter(asset_taxonomy_assignments::taxonomy_id.eq(&taxonomy_id)),
                 )
                 .execute(conn)
-                .map_err(StorageError::from)?)
+                .map_err(StorageError::from)?;
+
+                for assignment_id in existing_ids {
+                    write_outbox_event(
+                        conn,
+                        OutboxWriteRequest::new(
+                            SyncEntity::AssetTaxonomyAssignment,
+                            assignment_id.clone(),
+                            SyncOperation::Delete,
+                            serde_json::json!({ "id": assignment_id }),
+                        ),
+                    )?;
+                }
+
+                Ok(affected)
             })
             .await
     }

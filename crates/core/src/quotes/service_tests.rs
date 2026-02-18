@@ -104,6 +104,16 @@ mod tests {
             Ok(original_len - quotes.len())
         }
 
+        async fn delete_provider_quotes_for_asset(&self, asset_id: &AssetId) -> Result<usize> {
+            let mut quotes = self.quotes.lock().unwrap();
+            let original_len = quotes.len();
+            quotes.retain(|q| {
+                q.asset_id != asset_id.as_str()
+                    || q.data_source == crate::quotes::model::DataSource::Manual
+            });
+            Ok(original_len - quotes.len())
+        }
+
         fn latest(
             &self,
             asset_id: &AssetId,

@@ -238,6 +238,12 @@ pub fn compute_sas(shared_secret_b64: &str) -> Result<String, String> {
     Ok(format!("{:06}", num))
 }
 
+/// Compute SHA-256 checksum of data, returned as `sha256:<hex>`.
+pub fn sha256_checksum(data: &[u8]) -> String {
+    let digest = Sha256::digest(data);
+    format!("sha256:{:x}", digest)
+}
+
 /// Generate a UUID v4 device ID
 pub fn generate_device_id() -> String {
     uuid::Uuid::new_v4().to_string()

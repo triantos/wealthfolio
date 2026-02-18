@@ -10,6 +10,7 @@ use crate::db::WriteHandle;
 use crate::errors::StorageError;
 use crate::market_data::QuoteDB;
 use crate::schema::{assets, quotes};
+use crate::sync::{write_outbox_event, OutboxWriteRequest};
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use diesel::prelude::*;
@@ -20,6 +21,7 @@ use rust_decimal::Decimal;
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
+use wealthfolio_core::sync::{SyncEntity, SyncOperation};
 
 #[derive(Clone)]
 pub struct FxRepository {
@@ -428,9 +430,22 @@ impl FxRepository {
                     .execute(conn)
                     .map_err(StorageError::from)?;
 
-                diesel::delete(assets::table.filter(assets::id.eq(&rate_id_owned)))
-                    .execute(conn)
-                    .map_err(StorageError::from)?;
+                let assets_deleted =
+                    diesel::delete(assets::table.filter(assets::id.eq(&rate_id_owned)))
+                        .execute(conn)
+                        .map_err(StorageError::from)?;
+
+                if assets_deleted > 0 {
+                    write_outbox_event(
+                        conn,
+                        OutboxWriteRequest::new(
+                            SyncEntity::Asset,
+                            rate_id_owned.clone(),
+                            SyncOperation::Delete,
+                            serde_json::json!({ "id": rate_id_owned }),
+                        ),
+                    )?;
+                }
 
                 Ok(())
             })
@@ -454,11 +469,6 @@ impl FxRepository {
                     .map_err(StorageError::from)?;
 
                 if let Some(existing_asset) = existing {
-                    diesel::update(assets::table.filter(assets::id.eq(&existing_asset.id)))
-                        .set(assets::updated_at.eq(chrono::Utc::now().to_rfc3339()))
-                        .execute(conn)
-                        .map_err(StorageError::from)?;
-
                     Ok(existing_asset.id)
                 } else {
                     let new_asset = NewAsset::new_fx_asset(&from_owned, &to_owned, &source_owned);
@@ -474,6 +484,16 @@ impl FxRepository {
                         .filter(assets::instrument_key.eq(&expected_key))
                         .first(conn)
                         .map_err(StorageError::from)?;
+
+                    write_outbox_event(
+                        conn,
+                        OutboxWriteRequest::new(
+                            SyncEntity::Asset,
+                            inserted.id.clone(),
+                            SyncOperation::Create,
+                            serde_json::to_value(&inserted)?,
+                        ),
+                    )?;
 
                     Ok(inserted.id)
                 }

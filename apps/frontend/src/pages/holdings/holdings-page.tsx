@@ -522,7 +522,8 @@ export const HoldingsPage = () => {
           setSelectedAccount={handleAccountSelect}
           variant="dropdown"
           includePortfolio={true}
-          className="h-9"
+          iconOnly={true}
+          icon={Icons.ListFilter}
         />
         {/* Show Update button for HOLDINGS-mode manual accounts (only on investments tab) */}
         {canEditHoldings && !isEditMode && currentTab === "investments" && (

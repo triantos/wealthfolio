@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use diesel::prelude::*;
 use diesel::r2d2::{self, Pool};
 use diesel::sqlite::SqliteConnection;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use wealthfolio_core::assets::{Asset, AssetRepositoryTrait, NewAsset, UpdateAssetProfile};
@@ -11,7 +12,9 @@ use super::model::{AssetDB, InsertableAssetDB};
 use crate::db::{get_connection, WriteHandle};
 use crate::errors::StorageError;
 use crate::schema::{activities, assets, quotes};
+use crate::sync::{write_outbox_event, OutboxWriteRequest};
 use crate::utils::chunk_for_sqlite;
+use wealthfolio_core::sync::{SyncEntity, SyncOperation};
 
 /// Repository for managing asset data in the database
 pub struct AssetRepository {
@@ -117,7 +120,18 @@ impl AssetRepositoryTrait for AssetRepository {
                     .values(&asset_db)
                     .get_result::<AssetDB>(conn)
                     .map_err(StorageError::from)?;
-                Ok(result_db.into())
+                let payload_db = result_db.clone();
+                let asset: Asset = result_db.into();
+                write_outbox_event(
+                    conn,
+                    OutboxWriteRequest::new(
+                        SyncEntity::Asset,
+                        asset.id.clone(),
+                        SyncOperation::Create,
+                        serde_json::to_value(&payload_db)?,
+                    ),
+                )?;
+                Ok(asset)
             })
             .await
     }
@@ -130,9 +144,18 @@ impl AssetRepositoryTrait for AssetRepository {
             asset.validate()?;
         }
         let assets_db: Vec<InsertableAssetDB> = new_assets.into_iter().map(|a| a.into()).collect();
+        let ids: Vec<String> = assets_db.iter().filter_map(|a| a.id.clone()).collect();
 
         self.writer
             .exec(move |conn: &mut SqliteConnection| -> Result<Vec<Asset>> {
+                let existing_ids: HashSet<String> = assets::table
+                    .filter(assets::id.eq_any(&ids))
+                    .select(assets::id)
+                    .load::<String>(conn)
+                    .map_err(StorageError::from)?
+                    .into_iter()
+                    .collect();
+
                 // INSERT OR IGNORE: skip assets that already exist
                 for asset_db in &assets_db {
                     diesel::insert_into(assets::table)
@@ -144,11 +167,23 @@ impl AssetRepositoryTrait for AssetRepository {
                 }
 
                 // Re-read all to return the full set
-                let ids: Vec<String> = assets_db.into_iter().filter_map(|a| a.id).collect();
                 let results = assets::table
                     .filter(assets::id.eq_any(&ids))
                     .load::<AssetDB>(conn)
                     .map_err(StorageError::from)?;
+                for result in &results {
+                    if !existing_ids.contains(&result.id) {
+                        write_outbox_event(
+                            conn,
+                            OutboxWriteRequest::new(
+                                SyncEntity::Asset,
+                                result.id.clone(),
+                                SyncOperation::Create,
+                                serde_json::to_value(result)?,
+                            ),
+                        )?;
+                    }
+                }
                 Ok(results.into_iter().map(|r| r.into()).collect())
             })
             .await
@@ -256,7 +291,18 @@ impl AssetRepositoryTrait for AssetRepository {
                         .get_result::<AssetDB>(conn)
                         .map_err(StorageError::from)?
                 };
-                Ok(result_db.into())
+                let payload_db = result_db.clone();
+                let asset: Asset = result_db.into();
+                write_outbox_event(
+                    conn,
+                    OutboxWriteRequest::new(
+                        SyncEntity::Asset,
+                        asset.id.clone(),
+                        SyncOperation::Update,
+                        serde_json::to_value(&payload_db)?,
+                    ),
+                )?;
+                Ok(asset)
             })
             .await
     }
@@ -271,6 +317,16 @@ impl AssetRepositoryTrait for AssetRepository {
                     .set(assets::quote_mode.eq(quote_mode_owned))
                     .get_result::<AssetDB>(conn)
                     .map_err(StorageError::from)?;
+                let payload_db = result_db.clone();
+                write_outbox_event(
+                    conn,
+                    OutboxWriteRequest::new(
+                        SyncEntity::Asset,
+                        payload_db.id.clone(),
+                        SyncOperation::Update,
+                        serde_json::to_value(&payload_db)?,
+                    ),
+                )?;
                 Ok(result_db.into())
             })
             .await
@@ -293,6 +349,7 @@ impl AssetRepositoryTrait for AssetRepository {
 
     async fn delete(&self, asset_id: &str) -> Result<()> {
         let asset_id_owned = asset_id.to_string();
+        let asset_id_for_event = asset_id_owned.clone();
         self.writer
             .exec(move |conn: &mut SqliteConnection| -> Result<()> {
                 // Check for activities constraint
@@ -317,6 +374,16 @@ impl AssetRepositoryTrait for AssetRepository {
                 diesel::delete(assets::table.filter(assets::id.eq(&asset_id_owned)))
                     .execute(conn)
                     .map_err(StorageError::from)?;
+
+                write_outbox_event(
+                    conn,
+                    OutboxWriteRequest::new(
+                        SyncEntity::Asset,
+                        asset_id_owned.clone(),
+                        SyncOperation::Delete,
+                        serde_json::json!({ "id": asset_id_for_event }),
+                    ),
+                )?;
 
                 Ok(())
             })
@@ -367,6 +434,19 @@ impl AssetRepositoryTrait for AssetRepository {
                     .set(assets::metadata.eq(new_metadata))
                     .execute(conn)
                     .map_err(StorageError::from)?;
+                let updated = assets::table
+                    .filter(assets::id.eq(&asset_id_owned))
+                    .first::<AssetDB>(conn)
+                    .map_err(StorageError::from)?;
+                write_outbox_event(
+                    conn,
+                    OutboxWriteRequest::new(
+                        SyncEntity::Asset,
+                        updated.id.clone(),
+                        SyncOperation::Update,
+                        serde_json::to_value(&updated)?,
+                    ),
+                )?;
 
                 Ok(())
             })
@@ -377,10 +457,19 @@ impl AssetRepositoryTrait for AssetRepository {
         let asset_id_owned = asset_id.to_string();
         self.writer
             .exec(move |conn: &mut SqliteConnection| -> Result<()> {
-                diesel::update(assets::table.filter(assets::id.eq(&asset_id_owned)))
+                let updated = diesel::update(assets::table.filter(assets::id.eq(&asset_id_owned)))
                     .set(assets::is_active.eq(0))
-                    .execute(conn)
+                    .get_result::<AssetDB>(conn)
                     .map_err(StorageError::from)?;
+                write_outbox_event(
+                    conn,
+                    OutboxWriteRequest::new(
+                        SyncEntity::Asset,
+                        updated.id.clone(),
+                        SyncOperation::Update,
+                        serde_json::to_value(&updated)?,
+                    ),
+                )?;
                 Ok(())
             })
             .await
@@ -390,10 +479,19 @@ impl AssetRepositoryTrait for AssetRepository {
         let asset_id_owned = asset_id.to_string();
         self.writer
             .exec(move |conn: &mut SqliteConnection| -> Result<()> {
-                diesel::update(assets::table.filter(assets::id.eq(&asset_id_owned)))
+                let updated = diesel::update(assets::table.filter(assets::id.eq(&asset_id_owned)))
                     .set(assets::is_active.eq(1))
-                    .execute(conn)
+                    .get_result::<AssetDB>(conn)
                     .map_err(StorageError::from)?;
+                write_outbox_event(
+                    conn,
+                    OutboxWriteRequest::new(
+                        SyncEntity::Asset,
+                        updated.id.clone(),
+                        SyncOperation::Update,
+                        serde_json::to_value(&updated)?,
+                    ),
+                )?;
                 Ok(())
             })
             .await
@@ -414,10 +512,20 @@ impl AssetRepositoryTrait for AssetRepository {
                 // Don't overwrite target's notes if source is empty
                 if let Some(ref notes) = source.notes {
                     if !notes.trim().is_empty() {
-                        diesel::update(assets::table.filter(assets::id.eq(&target_id_owned)))
-                            .set(assets::notes.eq(notes))
-                            .execute(conn)
-                            .map_err(StorageError::from)?;
+                        let updated =
+                            diesel::update(assets::table.filter(assets::id.eq(&target_id_owned)))
+                                .set(assets::notes.eq(notes))
+                                .get_result::<AssetDB>(conn)
+                                .map_err(StorageError::from)?;
+                        write_outbox_event(
+                            conn,
+                            OutboxWriteRequest::new(
+                                SyncEntity::Asset,
+                                updated.id.clone(),
+                                SyncOperation::Update,
+                                serde_json::to_value(&updated)?,
+                            ),
+                        )?;
                     }
                 }
 
@@ -447,6 +555,23 @@ impl AssetRepositoryTrait for AssetRepository {
                     .set(assets::is_active.eq(0))
                     .execute(conn)
                     .map_err(StorageError::from)?;
+
+                    let updated_rows = assets::table
+                        .filter(assets::id.eq_any(&orphan_ids))
+                        .select(AssetDB::as_select())
+                        .load::<AssetDB>(conn)
+                        .map_err(StorageError::from)?;
+                    for updated in updated_rows {
+                        write_outbox_event(
+                            conn,
+                            OutboxWriteRequest::new(
+                                SyncEntity::Asset,
+                                updated.id.clone(),
+                                SyncOperation::Update,
+                                serde_json::to_value(&updated)?,
+                            ),
+                        )?;
+                    }
                 }
 
                 Ok(orphan_ids)

@@ -330,6 +330,9 @@ pub struct SymbolSyncPlan {
     /// Provider-specific symbol for quote fetching (may differ from canonical symbol).
     pub quote_symbol: Option<String>,
     pub currency: String,
+    /// When true, delete all non-manual quotes before upserting fresh data.
+    /// Set for BackfillHistory mode to remove stale/wrong dates.
+    pub purge_provider_quotes: bool,
 }
 
 /// Domain model for quote sync state.

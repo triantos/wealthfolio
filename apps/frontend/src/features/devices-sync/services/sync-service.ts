@@ -13,6 +13,9 @@ import {
   enableDeviceSync as enableDeviceSyncApi,
   clearDeviceSyncData as clearDeviceSyncDataApi,
   reinitializeDeviceSync as reinitializeDeviceSyncApi,
+  getSyncEngineStatus as getSyncEngineStatusApi,
+  syncBootstrapSnapshotIfNeeded as syncBootstrapSnapshotIfNeededApi,
+  syncTriggerCycle as syncTriggerCycleApi,
   getDevice as getDeviceApi,
   listDevices as listDevicesApi,
   updateDevice as updateDeviceApi,
@@ -27,6 +30,7 @@ import {
   claimPairing as claimPairingApi,
   getPairingMessages as getPairingMessagesApi,
   confirmPairing as confirmPairingApi,
+  isDesktop,
 } from "@/adapters";
 import { syncStorage } from "../storage/keyring";
 import * as crypto from "../crypto";
@@ -175,6 +179,73 @@ class SyncService {
       throw new SyncError(SyncErrorCodes.REQUIRES_PAIRING, "Pairing required to get keys");
     }
     return { keyVersion: result.keyVersion };
+  }
+
+  async getEngineStatus(): Promise<{
+    cursor: number;
+    lastPushAt: string | null;
+    lastPullAt: string | null;
+    lastError: string | null;
+    consecutiveFailures: number;
+    nextRetryAt: string | null;
+    lastCycleStatus: string | null;
+    lastCycleDurationMs: number | null;
+    backgroundRunning: boolean;
+    bootstrapRequired: boolean;
+  }> {
+    if (!isDesktop) {
+      return {
+        cursor: 0,
+        lastPushAt: null,
+        lastPullAt: null,
+        lastError: null,
+        consecutiveFailures: 0,
+        nextRetryAt: null,
+        lastCycleStatus: "web_stub",
+        lastCycleDurationMs: null,
+        backgroundRunning: false,
+        bootstrapRequired: false,
+      };
+    }
+    return getSyncEngineStatusApi();
+  }
+
+  async bootstrapSnapshotIfNeeded(): Promise<{
+    status: string;
+    message: string;
+    snapshotId: string | null;
+    cursor: number | null;
+  }> {
+    if (!isDesktop) {
+      return {
+        status: "skipped",
+        message: "Snapshot bootstrap is desktop-only",
+        snapshotId: null,
+        cursor: null,
+      };
+    }
+    return syncBootstrapSnapshotIfNeededApi();
+  }
+
+  async triggerSyncCycle(): Promise<{
+    status: string;
+    lockVersion: number;
+    pushedCount: number;
+    pulledCount: number;
+    cursor: number;
+    needsBootstrap: boolean;
+  }> {
+    if (!isDesktop) {
+      return {
+        status: "skipped",
+        lockVersion: 0,
+        pushedCount: 0,
+        pulledCount: 0,
+        cursor: 0,
+        needsBootstrap: false,
+      };
+    }
+    return syncTriggerCycleApi();
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -571,5 +642,7 @@ class SyncService {
   }
 }
 
-// Export singleton instance
-export const syncService = new SyncService();
+// Export singleton instance with explicit device-sync naming.
+export const deviceSyncService = new SyncService();
+// Backward-compatible alias.
+export const syncService = deviceSyncService;

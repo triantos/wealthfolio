@@ -8,10 +8,12 @@ use crate::db::{get_connection, WriteHandle};
 use crate::errors::StorageError;
 use crate::schema::accounts;
 use crate::schema::accounts::dsl::*;
+use crate::sync::{write_outbox_event, OutboxWriteRequest};
 
 use super::model::AccountDB;
 use wealthfolio_core::accounts::{Account, AccountRepositoryTrait, AccountUpdate, NewAccount};
 use wealthfolio_core::errors::Result;
+use wealthfolio_core::sync::{SyncEntity, SyncOperation};
 
 /// Repository for managing account data in the database
 pub struct AccountRepository {
@@ -46,7 +48,19 @@ impl AccountRepositoryTrait for AccountRepository {
                     .execute(conn)
                     .map_err(StorageError::from)?;
 
-                Ok(account_db.into())
+                let payload_db = account_db.clone();
+                let account: Account = account_db.into();
+                write_outbox_event(
+                    conn,
+                    OutboxWriteRequest::new(
+                        SyncEntity::Account,
+                        account.id.clone(),
+                        SyncOperation::Create,
+                        serde_json::to_value(&payload_db)?,
+                    ),
+                )?;
+
+                Ok(account)
             })
             .await
     }
@@ -93,7 +107,19 @@ impl AccountRepositoryTrait for AccountRepository {
                     .execute(conn)
                     .map_err(StorageError::from)?;
 
-                Ok(account_db.into())
+                let payload_db = account_db.clone();
+                let account: Account = account_db.into();
+                write_outbox_event(
+                    conn,
+                    OutboxWriteRequest::new(
+                        SyncEntity::Account,
+                        account.id.clone(),
+                        SyncOperation::Update,
+                        serde_json::to_value(&payload_db)?,
+                    ),
+                )?;
+
+                Ok(account)
             })
             .await
     }
@@ -147,11 +173,24 @@ impl AccountRepositoryTrait for AccountRepository {
     /// Deletes an account by its ID and returns the number of deleted records
     async fn delete(&self, account_id_param: &str) -> Result<usize> {
         let id_to_delete_owned = account_id_param.to_string();
+        let event_entity_id = id_to_delete_owned.clone();
         self.writer
             .exec(move |conn| {
                 let affected_rows = diesel::delete(accounts.find(id_to_delete_owned))
                     .execute(conn)
                     .map_err(StorageError::from)?;
+
+                if affected_rows > 0 {
+                    write_outbox_event(
+                        conn,
+                        OutboxWriteRequest::new(
+                            SyncEntity::Account,
+                            event_entity_id.clone(),
+                            SyncOperation::Delete,
+                            serde_json::json!({ "id": event_entity_id }),
+                        ),
+                    )?;
+                }
                 Ok(affected_rows)
             })
             .await

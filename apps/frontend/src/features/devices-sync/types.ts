@@ -356,6 +356,29 @@ export interface SyncState {
   /** Current error (if any) */
   error: SyncError | null;
 
+  /** Snapshot bootstrap status (desktop-only). */
+  bootstrapStatus: "idle" | "running" | "success" | "error";
+
+  /** Last bootstrap status message from backend. */
+  bootstrapMessage: string | null;
+
+  /** Last snapshot ID applied/requested by bootstrap flow. */
+  bootstrapSnapshotId: string | null;
+
+  /** Latest sync engine telemetry (desktop runtime). */
+  engineStatus: {
+    cursor: number;
+    lastPushAt: string | null;
+    lastPullAt: string | null;
+    lastError: string | null;
+    consecutiveFailures: number;
+    nextRetryAt: string | null;
+    lastCycleStatus: string | null;
+    lastCycleDurationMs: number | null;
+    backgroundRunning: boolean;
+    bootstrapRequired: boolean;
+  } | null;
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Identity & Device
   // ─────────────────────────────────────────────────────────────────────────────
@@ -394,6 +417,10 @@ export const INITIAL_SYNC_STATE: SyncState = {
   isDetecting: true,
   isLoading: false,
   error: null,
+  bootstrapStatus: "idle",
+  bootstrapMessage: null,
+  bootstrapSnapshotId: null,
+  engineStatus: null,
   identity: null,
   device: null,
   serverKeyVersion: null,

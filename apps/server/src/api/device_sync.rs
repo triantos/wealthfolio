@@ -26,7 +26,6 @@ use wealthfolio_device_sync::{
 };
 
 // Storage keys (without prefix - the SecretStore adds "wealthfolio_" prefix)
-const CLOUD_ACCESS_TOKEN_KEY: &str = "sync_access_token";
 const DEVICE_ID_KEY: &str = "sync_device_id";
 
 fn cloud_api_base_url() -> String {
@@ -37,15 +36,9 @@ fn cloud_api_base_url() -> String {
         .unwrap_or_else(|| DEFAULT_CLOUD_API_URL.to_string())
 }
 
-/// Get the access token from secret store.
-fn get_access_token(state: &AppState) -> ApiResult<String> {
-    state
-        .secret_store
-        .get_secret(CLOUD_ACCESS_TOKEN_KEY)
-        .map_err(|e| ApiError::Internal(format!("Failed to get access token: {}", e)))?
-        .ok_or_else(|| {
-            ApiError::Unauthorized("No access token configured. Please sign in first.".to_string())
-        })
+/// Get a fresh access token by refreshing via the stored refresh token.
+async fn get_access_token(state: &AppState) -> ApiResult<String> {
+    super::connect::mint_access_token(state).await
 }
 
 /// Get the device ID from secret store.
@@ -152,7 +145,7 @@ async fn register_device(
 ) -> ApiResult<Json<EnrollDeviceResponse>> {
     info!("[DeviceSync] Registering device: {}", body.display_name);
 
-    let token = get_access_token(&state)?;
+    let token = get_access_token(&state).await?;
     let client = create_client();
 
     let request = RegisterDeviceRequest {
@@ -190,7 +183,7 @@ async fn get_device_endpoint(
     State(state): State<Arc<AppState>>,
     Path(device_id): Path<String>,
 ) -> ApiResult<Json<Device>> {
-    let token = get_access_token(&state)?;
+    let token = get_access_token(&state).await?;
 
     let device = create_client()
         .get_device(&token, &device_id)
@@ -201,7 +194,7 @@ async fn get_device_endpoint(
 }
 
 async fn get_current_device(State(state): State<Arc<AppState>>) -> ApiResult<Json<Device>> {
-    let token = get_access_token(&state)?;
+    let token = get_access_token(&state).await?;
     let device_id = get_device_id(&state)
         .ok_or_else(|| ApiError::BadRequest("No device ID configured".to_string()))?;
 
@@ -219,7 +212,7 @@ async fn list_devices(
 ) -> ApiResult<Json<Vec<Device>>> {
     info!("[DeviceSync] Listing devices (scope: {:?})...", query.scope);
 
-    let token = get_access_token(&state)?;
+    let token = get_access_token(&state).await?;
 
     let devices = create_client()
         .list_devices(&token, query.scope.as_deref())
@@ -240,7 +233,7 @@ async fn update_device_endpoint(
         device_id, body.display_name
     );
 
-    let token = get_access_token(&state)?;
+    let token = get_access_token(&state).await?;
 
     let result = create_client()
         .update_device(
@@ -263,7 +256,7 @@ async fn delete_device_endpoint(
 ) -> ApiResult<Json<SuccessResponse>> {
     info!("Deleting device: {}", device_id);
 
-    let token = get_access_token(&state)?;
+    let token = get_access_token(&state).await?;
 
     let result = create_client()
         .delete_device(&token, &device_id)
@@ -279,7 +272,7 @@ async fn revoke_device_endpoint(
 ) -> ApiResult<Json<SuccessResponse>> {
     info!("Revoking device: {}", device_id);
 
-    let token = get_access_token(&state)?;
+    let token = get_access_token(&state).await?;
 
     let result = create_client()
         .revoke_device(&token, &device_id)
@@ -298,7 +291,7 @@ async fn initialize_team_keys(
 ) -> ApiResult<Json<InitializeKeysResult>> {
     info!("[DeviceSync] Initializing team keys...");
 
-    let token = get_access_token(&state)?;
+    let token = get_access_token(&state).await?;
     let device_id = get_device_id(&state)
         .ok_or_else(|| ApiError::BadRequest("No device ID configured".to_string()))?;
 
@@ -316,7 +309,7 @@ async fn commit_initialize_team_keys(
 ) -> ApiResult<Json<CommitInitializeKeysResponse>> {
     info!("[DeviceSync] Committing team key initialization...");
 
-    let token = get_access_token(&state)?;
+    let token = get_access_token(&state).await?;
     let device_id = get_device_id(&state)
         .ok_or_else(|| ApiError::BadRequest("No device ID configured".to_string()))?;
 
@@ -342,7 +335,7 @@ async fn rotate_team_keys(
 ) -> ApiResult<Json<RotateKeysResponse>> {
     info!("[DeviceSync] Starting key rotation...");
 
-    let token = get_access_token(&state)?;
+    let token = get_access_token(&state).await?;
     let device_id = get_device_id(&state)
         .ok_or_else(|| ApiError::BadRequest("No device ID configured".to_string()))?;
 
@@ -360,7 +353,7 @@ async fn commit_rotate_team_keys(
 ) -> ApiResult<Json<CommitRotateKeysResponse>> {
     info!("[DeviceSync] Committing key rotation...");
 
-    let token = get_access_token(&state)?;
+    let token = get_access_token(&state).await?;
     let device_id = get_device_id(&state)
         .ok_or_else(|| ApiError::BadRequest("No device ID configured".to_string()))?;
 
@@ -378,7 +371,7 @@ async fn reset_team_sync(
 ) -> ApiResult<Json<ResetTeamSyncResponse>> {
     info!("[DeviceSync] Resetting team sync...");
 
-    let token = get_access_token(&state)?;
+    let token = get_access_token(&state).await?;
 
     let result = create_client()
         .reset_team_sync(&token, body.reason.as_deref())
@@ -398,7 +391,7 @@ async fn create_pairing(
 ) -> ApiResult<Json<CreatePairingResponse>> {
     debug!("Creating pairing session...");
 
-    let token = get_access_token(&state)?;
+    let token = get_access_token(&state).await?;
     let device_id = get_device_id(&state)
         .ok_or_else(|| ApiError::BadRequest("No device ID configured".to_string()))?;
 
@@ -423,7 +416,7 @@ async fn get_pairing(
 ) -> ApiResult<Json<GetPairingResponse>> {
     debug!("Getting pairing session: {}", pairing_id);
 
-    let token = get_access_token(&state)?;
+    let token = get_access_token(&state).await?;
     let device_id = get_device_id(&state)
         .ok_or_else(|| ApiError::BadRequest("No device ID configured".to_string()))?;
 
@@ -441,7 +434,7 @@ async fn approve_pairing(
 ) -> ApiResult<Json<SuccessResponse>> {
     debug!("Approving pairing session: {}", pairing_id);
 
-    let token = get_access_token(&state)?;
+    let token = get_access_token(&state).await?;
     let device_id = get_device_id(&state)
         .ok_or_else(|| ApiError::BadRequest("No device ID configured".to_string()))?;
 
@@ -460,7 +453,7 @@ async fn complete_pairing(
 ) -> ApiResult<Json<SuccessResponse>> {
     debug!("Completing pairing session: {}", pairing_id);
 
-    let token = get_access_token(&state)?;
+    let token = get_access_token(&state).await?;
     let device_id = get_device_id(&state)
         .ok_or_else(|| ApiError::BadRequest("No device ID configured".to_string()))?;
 
@@ -487,7 +480,7 @@ async fn cancel_pairing(
 ) -> ApiResult<Json<SuccessResponse>> {
     debug!("Canceling pairing session: {}", pairing_id);
 
-    let token = get_access_token(&state)?;
+    let token = get_access_token(&state).await?;
     let device_id = get_device_id(&state)
         .ok_or_else(|| ApiError::BadRequest("No device ID configured".to_string()))?;
 
@@ -509,7 +502,7 @@ async fn claim_pairing(
 ) -> ApiResult<Json<ClaimPairingResponse>> {
     debug!("Claiming pairing session with code...");
 
-    let token = get_access_token(&state)?;
+    let token = get_access_token(&state).await?;
     let device_id = get_device_id(&state)
         .ok_or_else(|| ApiError::BadRequest("No device ID configured".to_string()))?;
 
@@ -534,7 +527,7 @@ async fn get_pairing_messages(
 ) -> ApiResult<Json<PairingMessagesResponse>> {
     debug!("Getting pairing messages: {}", pairing_id);
 
-    let token = get_access_token(&state)?;
+    let token = get_access_token(&state).await?;
     let device_id = get_device_id(&state)
         .ok_or_else(|| ApiError::BadRequest("No device ID configured".to_string()))?;
 
@@ -553,7 +546,7 @@ async fn confirm_pairing_endpoint(
 ) -> ApiResult<Json<ConfirmPairingResponse>> {
     debug!("Confirming pairing session: {}", pairing_id);
 
-    let token = get_access_token(&state)?;
+    let token = get_access_token(&state).await?;
     let device_id = get_device_id(&state)
         .ok_or_else(|| ApiError::BadRequest("No device ID configured".to_string()))?;
 

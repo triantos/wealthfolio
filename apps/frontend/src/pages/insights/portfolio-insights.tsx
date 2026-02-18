@@ -1,10 +1,13 @@
+import { AccountSelector } from "@/components/account-selector";
 import { SwipablePage, SwipablePageView } from "@/components/page";
+import { PORTFOLIO_ACCOUNT_ID } from "@/lib/constants";
+import type { Account } from "@/lib/types";
 import IncomePage from "@/pages/income/income-page";
 import PerformancePage from "@/pages/performance/performance-page";
 import { Icons } from "@wealthfolio/ui";
 import { Card, CardContent, CardHeader } from "@wealthfolio/ui/components/ui/card";
 import { Skeleton } from "@wealthfolio/ui/components/ui/skeleton";
-import { Suspense, useMemo } from "react";
+import { Suspense, useMemo, useState } from "react";
 import HoldingsInsightsPage from "../holdings/holdings-insights-page";
 
 // Loading skeleton to show while the dashboard is loading
@@ -31,6 +34,34 @@ const DashboardLoader = () => (
 );
 
 export default function PortfolioInsightsPage() {
+  const [selectedAccount, setSelectedAccount] = useState<Account | null>({
+    id: PORTFOLIO_ACCOUNT_ID,
+    name: "All Portfolio",
+    accountType: "PORTFOLIO" as unknown as Account["accountType"],
+    balance: 0,
+    currency: "USD",
+    isDefault: false,
+    isActive: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  } as Account);
+
+  const accountId = selectedAccount?.id ?? PORTFOLIO_ACCOUNT_ID;
+
+  const holdingsActions = useMemo(
+    () => (
+      <AccountSelector
+        selectedAccount={selectedAccount}
+        setSelectedAccount={setSelectedAccount}
+        variant="dropdown"
+        includePortfolio={true}
+        iconOnly={true}
+        icon={Icons.ListFilter}
+      />
+    ),
+    [selectedAccount],
+  );
+
   // Define the views with icons
   const views: SwipablePageView[] = useMemo(
     () => [
@@ -40,9 +71,10 @@ export default function PortfolioInsightsPage() {
         icon: Icons.PieChart,
         content: (
           <Suspense fallback={<DashboardLoader />}>
-            <HoldingsInsightsPage />
+            <HoldingsInsightsPage accountId={accountId} />
           </Suspense>
         ),
+        actions: holdingsActions,
       },
       {
         value: "performance",
@@ -65,7 +97,7 @@ export default function PortfolioInsightsPage() {
         ),
       },
     ],
-    [],
+    [accountId, holdingsActions],
   );
 
   return <SwipablePage views={views} defaultView="holdings" withPadding={true} />;

@@ -138,10 +138,13 @@ export function SymbolSearch<TFieldValues extends FieldValues = FieldValues>({
     }
 
     // Background quote resolution: confirm inferred currency and show display quote
+    // For existing assets, currency is already established — never override it
     const needsCurrencyConfirmation =
-      currencyName && searchResult?.currencySource === "exchange_inferred";
+      currencyName &&
+      searchResult?.currencySource === "exchange_inferred" &&
+      !searchResult?.isExisting;
 
-    if (searchResult && !searchResult.isExisting) {
+    if (searchResult) {
       setQuoteDisplay({ price: null, isLoading: true });
       const provisionalCurrency = searchResult.currency?.trim();
       resolveSymbolQuote(searchResult.symbol, searchResult.exchangeMic, searchResult.quoteType)

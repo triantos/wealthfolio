@@ -3,12 +3,11 @@ import { Button } from "@wealthfolio/ui/components/ui/button";
 import { Icons } from "@wealthfolio/ui/components/ui/icons";
 import { useCallback, useMemo, useState } from "react";
 
-import { AccountSelector } from "@/components/account-selector";
 import { useHoldings } from "@/hooks/use-holdings";
 import { usePortfolioAllocations } from "@/hooks/use-portfolio-allocations";
 import { PORTFOLIO_ACCOUNT_ID, isAlternativeAssetKind, type AssetKind } from "@/lib/constants";
 import { useSettingsContext } from "@/lib/settings-provider";
-import type { Account, TaxonomyAllocation } from "@/lib/types";
+import type { TaxonomyAllocation } from "@/lib/types";
 import { useNavigate } from "react-router-dom";
 import { AllocationDetailSheet } from "./components/allocation-detail-sheet";
 import { CashHoldingsWidget } from "./components/cash-holdings-widget";
@@ -20,23 +19,16 @@ import { DrillableDonutChart } from "./components/drillable-donut-chart";
 import { SectorsChart } from "./components/sectors-chart";
 import { SegmentedAllocationBar } from "./components/segmented-allocation-bar";
 
-export const HoldingsInsightsPage = () => {
+interface HoldingsInsightsPageProps {
+  accountId?: string;
+}
+
+export const HoldingsInsightsPage = ({ accountId: accountIdProp }: HoldingsInsightsPageProps) => {
   const navigate = useNavigate();
   const { settings } = useSettingsContext();
   const baseCurrency = settings?.baseCurrency ?? "USD";
-  const [selectedAccount, setSelectedAccount] = useState<Account | null>({
-    id: PORTFOLIO_ACCOUNT_ID,
-    name: "All Portfolio",
-    accountType: "PORTFOLIO" as unknown as Account["accountType"],
-    balance: 0,
-    currency: baseCurrency,
-    isDefault: false,
-    isActive: true,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  } as Account);
 
-  const accountId = selectedAccount?.id ?? PORTFOLIO_ACCOUNT_ID;
+  const accountId = accountIdProp ?? PORTFOLIO_ACCOUNT_ID;
   const { holdings, isLoading: holdingsLoading } = useHoldings(accountId);
   const { allocations, isLoading: allocationsLoading } = usePortfolioAllocations(accountId);
 
@@ -95,10 +87,6 @@ export const HoldingsInsightsPage = () => {
       setIsSheetOpen(true);
     }
   }, []);
-
-  const handleAccountSelect = (account: Account) => {
-    setSelectedAccount(account);
-  };
 
   const { cashHoldings, nonCashHoldings } = useMemo(() => {
     const cash = holdings?.filter((holding) => holding.holdingType?.toLowerCase() === "cash") ?? [];
@@ -298,27 +286,6 @@ export const HoldingsInsightsPage = () => {
 
   return (
     <>
-      {/* Account selector - fixed position in header area */}
-      <div className="pointer-events-auto fixed right-2 top-4 z-20 hidden md:block lg:right-4">
-        <AccountSelector
-          selectedAccount={selectedAccount}
-          setSelectedAccount={handleAccountSelect}
-          variant="dropdown"
-          includePortfolio={true}
-          className="h-9"
-        />
-      </div>
-
-      <div className="mb-4 flex justify-end md:hidden">
-        <AccountSelector
-          selectedAccount={selectedAccount}
-          setSelectedAccount={handleAccountSelect}
-          variant="dropdown"
-          includePortfolio={true}
-          className="h-9"
-        />
-      </div>
-
       {renderAnalyticsView()}
 
       {/* Allocation Detail Sheet */}

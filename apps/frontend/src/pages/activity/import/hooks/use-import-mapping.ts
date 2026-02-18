@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   ImportFormat,
   ActivityType,
@@ -291,6 +291,10 @@ export function useImportMapping({
   const [hasInitializedFromHeaders, setHasInitializedFromHeaders] = useState(false);
   const queryClient = useQueryClient();
 
+  // Track whether we were initialized with a populated mapping (e.g. returning from review step).
+  // When true, skip the backend fetch merge to avoid overwriting the user's in-session work.
+  const hadExistingMappingRef = useRef(Object.keys(defaultMapping?.fieldMappings || {}).length > 0);
+
   // Fetch import mapping query
   const { data: fetchedMappingData, isLoading: isMappingLoading } = useQuery({
     queryKey: [QueryKeys.IMPORT_MAPPING, accountId],
@@ -332,7 +336,9 @@ export function useImportMapping({
   );
 
   useEffect(() => {
-    if (fetchedMappingData) {
+    // Skip backend merge when returning to mapping step with an already-populated context mapping.
+    // This prevents overwriting the user's in-session edits with stale backend data.
+    if (fetchedMappingData && !hadExistingMappingRef.current) {
       setMapping((prev) => ({
         ...prev,
         ...fetchedMappingData,
@@ -421,6 +427,7 @@ export function useImportMapping({
                   symbolName: searchResult.longName,
                   quoteCcy: searchResult.currency,
                   instrumentType: searchResult.quoteType,
+                  quoteMode: searchResult.dataSource === "MANUAL" ? "MANUAL" : undefined,
                 },
               }
             : {}),

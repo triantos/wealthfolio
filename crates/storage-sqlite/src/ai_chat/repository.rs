@@ -20,6 +20,8 @@ use wealthfolio_core::{Error as CoreError, Result as CoreResult};
 
 use crate::db::{get_connection, WriteHandle};
 use crate::schema::{ai_messages, ai_thread_tags, ai_threads};
+use crate::sync::{write_outbox_event, OutboxWriteRequest};
+use wealthfolio_core::sync::{SyncEntity, SyncOperation};
 
 use super::model::{AiMessageDB, AiThreadDB, AiThreadTagDB, MessageContent, MessagePart};
 
@@ -74,6 +76,16 @@ impl ChatRepositoryTrait for AiChatRepository {
                         .map_err(|e| {
                             CoreError::Database(DatabaseError::QueryFailed(e.to_string()))
                         })?;
+
+                    write_outbox_event(
+                        conn,
+                        OutboxWriteRequest::new(
+                            SyncEntity::AiThread,
+                            db.id.clone(),
+                            SyncOperation::Create,
+                            serde_json::to_value(&db)?,
+                        ),
+                    )?;
 
                     Ok(db_to_thread(&db))
                 },
@@ -254,6 +266,16 @@ impl ChatRepositoryTrait for AiChatRepository {
                             CoreError::Database(DatabaseError::QueryFailed(e.to_string()))
                         })?;
 
+                    write_outbox_event(
+                        conn,
+                        OutboxWriteRequest::new(
+                            SyncEntity::AiThread,
+                            db.id.clone(),
+                            SyncOperation::Update,
+                            serde_json::to_value(&db)?,
+                        ),
+                    )?;
+
                     Ok(db_to_thread(&db))
                 },
             )
@@ -266,9 +288,20 @@ impl ChatRepositoryTrait for AiChatRepository {
         self.writer
             .exec(move |conn: &mut SqliteConnection| -> CoreResult<()> {
                 // CASCADE will delete messages and tags automatically
-                diesel::delete(ai_threads::table.find(&thread_id))
+                let affected = diesel::delete(ai_threads::table.find(&thread_id))
                     .execute(conn)
                     .map_err(|e| CoreError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+                if affected > 0 {
+                    write_outbox_event(
+                        conn,
+                        OutboxWriteRequest::new(
+                            SyncEntity::AiThread,
+                            thread_id.clone(),
+                            SyncOperation::Delete,
+                            serde_json::json!({ "id": thread_id }),
+                        ),
+                    )?;
+                }
                 Ok(())
             })
             .await
@@ -303,12 +336,38 @@ impl ChatRepositoryTrait for AiChatRepository {
                             CoreError::Database(DatabaseError::QueryFailed(e.to_string()))
                         })?;
 
+                    let thread_db = ai_threads::table
+                        .find(&thread_id)
+                        .first::<AiThreadDB>(conn)
+                        .map_err(|e| {
+                            CoreError::Database(DatabaseError::QueryFailed(e.to_string()))
+                        })?;
+
                     let db = ai_messages::table
                         .find(&message_id)
                         .first::<AiMessageDB>(conn)
                         .map_err(|e| {
                             CoreError::Database(DatabaseError::QueryFailed(e.to_string()))
                         })?;
+
+                    write_outbox_event(
+                        conn,
+                        OutboxWriteRequest::new(
+                            SyncEntity::AiMessage,
+                            db.id.clone(),
+                            SyncOperation::Create,
+                            serde_json::to_value(&db)?,
+                        ),
+                    )?;
+                    write_outbox_event(
+                        conn,
+                        OutboxWriteRequest::new(
+                            SyncEntity::AiThread,
+                            thread_db.id.clone(),
+                            SyncOperation::Update,
+                            serde_json::to_value(&thread_db)?,
+                        ),
+                    )?;
 
                     db_to_message(&db).map_err(|e| match e {
                         AiError::InvalidInput(msg) => {
@@ -381,6 +440,16 @@ impl ChatRepositoryTrait for AiChatRepository {
                             CoreError::Database(DatabaseError::QueryFailed(e.to_string()))
                         })?;
 
+                    write_outbox_event(
+                        conn,
+                        OutboxWriteRequest::new(
+                            SyncEntity::AiMessage,
+                            db.id.clone(),
+                            SyncOperation::Update,
+                            serde_json::to_value(&db)?,
+                        ),
+                    )?;
+
                     db_to_message(&db).map_err(|e| match e {
                         AiError::InvalidInput(msg) => {
                             CoreError::Validation(ValidationError::InvalidInput(msg))
@@ -406,12 +475,23 @@ impl ChatRepositoryTrait for AiChatRepository {
 
         self.writer
             .exec(move |conn: &mut SqliteConnection| -> CoreResult<()> {
-                diesel::insert_into(ai_thread_tags::table)
+                let inserted = diesel::insert_into(ai_thread_tags::table)
                     .values(&tag_db)
                     .on_conflict((ai_thread_tags::thread_id, ai_thread_tags::tag))
                     .do_nothing()
                     .execute(conn)
                     .map_err(|e| CoreError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+                if inserted > 0 {
+                    write_outbox_event(
+                        conn,
+                        OutboxWriteRequest::new(
+                            SyncEntity::AiThreadTag,
+                            tag_db.id.clone(),
+                            SyncOperation::Create,
+                            serde_json::to_value(&tag_db)?,
+                        ),
+                    )?;
+                }
                 Ok(())
             })
             .await
@@ -424,6 +504,13 @@ impl ChatRepositoryTrait for AiChatRepository {
 
         self.writer
             .exec(move |conn: &mut SqliteConnection| -> CoreResult<()> {
+                let existing_ids = ai_thread_tags::table
+                    .filter(ai_thread_tags::thread_id.eq(&thread_id))
+                    .filter(ai_thread_tags::tag.eq(&tag))
+                    .select(ai_thread_tags::id)
+                    .load::<String>(conn)
+                    .map_err(|e| CoreError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+
                 diesel::delete(
                     ai_thread_tags::table
                         .filter(ai_thread_tags::thread_id.eq(&thread_id))
@@ -431,6 +518,18 @@ impl ChatRepositoryTrait for AiChatRepository {
                 )
                 .execute(conn)
                 .map_err(|e| CoreError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+
+                for id in existing_ids {
+                    write_outbox_event(
+                        conn,
+                        OutboxWriteRequest::new(
+                            SyncEntity::AiThreadTag,
+                            id.clone(),
+                            SyncOperation::Delete,
+                            serde_json::json!({ "id": id }),
+                        ),
+                    )?;
+                }
                 Ok(())
             })
             .await

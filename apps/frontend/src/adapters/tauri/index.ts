@@ -37,6 +37,11 @@ export type {
   PlatformInfo,
   BackendSyncStateResult,
   BackendEnableSyncResult,
+  BackendSyncEngineStatusResult,
+  BackendSyncBootstrapResult,
+  BackendSyncCycleResult,
+  BackendSyncBackgroundEngineResult,
+  BackendSyncSnapshotUploadResult,
   EphemeralKeyPair,
 } from "../types";
 

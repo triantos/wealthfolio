@@ -151,7 +151,7 @@ export const importActivities = async ({
       activities,
     });
   } catch (err) {
-    logger.error("Error importing activities.");
+    logger.error(`Error importing activities: ${err}`);
     throw err;
   }
 };
@@ -176,7 +176,7 @@ export const checkActivitiesImport = async ({
       activities,
     });
   } catch (err) {
-    logger.error("Error checking activities import.");
+    logger.error(`Error checking activities import: ${err}`);
     throw err;
   }
 };

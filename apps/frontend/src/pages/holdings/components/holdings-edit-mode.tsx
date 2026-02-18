@@ -43,6 +43,10 @@ interface EditableHolding {
   currency: string;
   /** Exchange MIC code (e.g., "XNAS", "XTSE") for new holdings from search */
   exchangeMic?: string;
+  /** Data source (e.g., "MANUAL" for custom assets) */
+  dataSource?: string;
+  /** Asset kind (e.g., "INVESTMENT", "OTHER") */
+  assetKind?: string;
   isNew?: boolean;
 }
 
@@ -218,6 +222,8 @@ export const HoldingsEditMode = ({
         averageCost: "",
         currency: searchResult.currency ?? account.currency,
         exchangeMic: searchResult.exchangeMic,
+        dataSource: searchResult.dataSource,
+        assetKind: searchResult.assetKind,
         isNew: true,
       };
       pendingHoldingSharesFocusAssetIdRef.current = assetId;
@@ -291,6 +297,9 @@ export const HoldingsEditMode = ({
           currency: h.currency,
           averageCost: h.averageCost || undefined,
           exchangeMic: h.isNew ? h.exchangeMic : undefined,
+          name: h.isNew ? h.name : undefined,
+          dataSource: h.isNew ? h.dataSource : undefined,
+          assetKind: h.isNew ? h.assetKind : undefined,
         }));
       const cashBalancesInput: Record<string, string> = {};
       for (const cash of cashBalances) {
@@ -507,10 +516,7 @@ export const HoldingsEditMode = ({
                         placeholder="Search for symbol..."
                         defaultCurrency={account.currency}
                         open={isAddHoldingPickerOpen}
-                        onOpenChange={(open) => {
-                          setIsAddHoldingPickerOpen(open);
-                          if (!open) setShowAddHolding(false);
-                        }}
+                        onOpenChange={setIsAddHoldingPickerOpen}
                         autoFocusSearch={true}
                       />
                     </div>

@@ -48,6 +48,7 @@ export interface DraftActivity {
   symbolName?: string;
   quoteCcy?: string;
   instrumentType?: string;
+  quoteMode?: string;
 
   // Validation state
   status: DraftActivityStatus;
@@ -232,8 +233,17 @@ function importReducer(state: ImportState, action: ImportAction): ImportState {
     case "NEXT_STEP":
       return { ...state, step: getNextStep(state.step) };
 
-    case "PREV_STEP":
-      return { ...state, step: getPrevStep(state.step) };
+    case "PREV_STEP": {
+      const prevStepValue = getPrevStep(state.step);
+      // Clear draft activities when going back from review to mapping
+      // so they get regenerated with the (potentially updated) mappings.
+      const clearDrafts = state.step === "review" && prevStepValue === "mapping";
+      return {
+        ...state,
+        step: prevStepValue,
+        ...(clearDrafts && { draftActivities: [] }),
+      };
+    }
 
     case "RESET":
       return { ...INITIAL_STATE };

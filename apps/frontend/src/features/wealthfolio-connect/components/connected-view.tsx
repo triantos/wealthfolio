@@ -223,9 +223,16 @@ function BrokerAccountCard({ account, connections }: BrokerAccountCardProps) {
 interface BrokerConnectionsCardProps {
   connections: BrokerConnection[];
   isLoading: boolean;
+  onRefresh: () => void;
+  isRefreshing: boolean;
 }
 
-function BrokerConnectionsCard({ connections, isLoading }: BrokerConnectionsCardProps) {
+function BrokerConnectionsCard({
+  connections,
+  isLoading,
+  onRefresh,
+  isRefreshing,
+}: BrokerConnectionsCardProps) {
   const openConnectionsPortal = () => {
     openUrlInBrowser(`${WEALTHFOLIO_CONNECT_PORTAL_URL}/connections`);
   };
@@ -240,25 +247,36 @@ function BrokerConnectionsCard({ connections, isLoading }: BrokerConnectionsCard
             </div>
             <h3 className="text-base font-semibold">Broker connections</h3>
           </div>
-          {/* Mobile: icon only */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="text-muted-foreground hover:text-foreground sm:hidden"
-            onClick={openConnectionsPortal}
-          >
-            <Icons.ExternalLink className="h-4 w-4" />
-          </Button>
-          {/* Desktop: full text */}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-muted-foreground hover:text-foreground hidden sm:inline-flex"
-            onClick={openConnectionsPortal}
-          >
-            Manage connections
-            <Icons.ArrowRight className="ml-1 h-3.5 w-3.5" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-muted-foreground hover:text-foreground h-8 w-8"
+              onClick={onRefresh}
+              disabled={isRefreshing}
+            >
+              <Icons.RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+            </Button>
+            {/* Mobile: icon only */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-muted-foreground hover:text-foreground sm:hidden"
+              onClick={openConnectionsPortal}
+            >
+              <Icons.ExternalLink className="h-4 w-4" />
+            </Button>
+            {/* Desktop: full text */}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground hover:text-foreground hidden sm:inline-flex"
+              onClick={openConnectionsPortal}
+            >
+              Manage connections
+              <Icons.ArrowRight className="ml-1 h-3.5 w-3.5" />
+            </Button>
+          </div>
         </div>
 
         <div className="mt-4 space-y-2">
@@ -499,7 +517,12 @@ export function ConnectedView() {
 
       {/* Broker Connections Card - Only show if user has an active subscription */}
       {hasSubscription && (
-        <BrokerConnectionsCard connections={connections} isLoading={isLoadingConnections} />
+        <BrokerConnectionsCard
+          connections={connections}
+          isLoading={isLoadingConnections}
+          onRefresh={() => connectionsQuery.refetch()}
+          isRefreshing={connectionsQuery.isFetching}
+        />
       )}
 
       {/* Accounts Card - Only show if user has an active subscription */}
@@ -513,25 +536,38 @@ export function ConnectedView() {
                 </div>
                 <h3 className="text-base font-semibold">Accounts</h3>
               </div>
-              {/* Mobile: icon only */}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-muted-foreground hover:text-foreground sm:hidden"
-                onClick={() => openUrlInBrowser(`${WEALTHFOLIO_CONNECT_PORTAL_URL}/accounts`)}
-              >
-                <Icons.ExternalLink className="h-4 w-4" />
-              </Button>
-              {/* Desktop: full text */}
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground hover:text-foreground hidden sm:inline-flex"
-                onClick={() => openUrlInBrowser(`${WEALTHFOLIO_CONNECT_PORTAL_URL}/accounts`)}
-              >
-                Manage accounts
-                <Icons.ArrowRight className="ml-1 h-3.5 w-3.5" />
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-muted-foreground hover:text-foreground h-8 w-8"
+                  onClick={() => accountsQuery.refetch()}
+                  disabled={accountsQuery.isFetching}
+                >
+                  <Icons.RefreshCw
+                    className={`h-4 w-4 ${accountsQuery.isFetching ? "animate-spin" : ""}`}
+                  />
+                </Button>
+                {/* Mobile: icon only */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-muted-foreground hover:text-foreground sm:hidden"
+                  onClick={() => openUrlInBrowser(`${WEALTHFOLIO_CONNECT_PORTAL_URL}/accounts`)}
+                >
+                  <Icons.ExternalLink className="h-4 w-4" />
+                </Button>
+                {/* Desktop: full text */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground hover:text-foreground hidden sm:inline-flex"
+                  onClick={() => openUrlInBrowser(`${WEALTHFOLIO_CONNECT_PORTAL_URL}/accounts`)}
+                >
+                  Manage accounts
+                  <Icons.ArrowRight className="ml-1 h-3.5 w-3.5" />
+                </Button>
+              </div>
             </div>
 
             <div className="mt-4">

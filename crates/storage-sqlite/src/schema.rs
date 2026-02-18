@@ -290,6 +290,86 @@ diesel::table! {
 }
 
 diesel::table! {
+    sync_applied_events (event_id) {
+        event_id -> Text,
+        seq -> BigInt,
+        entity -> Text,
+        entity_id -> Text,
+        applied_at -> Text,
+    }
+}
+
+diesel::table! {
+    sync_cursor (id) {
+        id -> Integer,
+        cursor -> BigInt,
+        updated_at -> Text,
+    }
+}
+
+diesel::table! {
+    sync_device_config (device_id) {
+        device_id -> Text,
+        key_version -> Nullable<Integer>,
+        trust_state -> Text,
+        last_bootstrap_at -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
+    sync_engine_state (id) {
+        id -> Integer,
+        lock_version -> BigInt,
+        last_push_at -> Nullable<Text>,
+        last_pull_at -> Nullable<Text>,
+        last_error -> Nullable<Text>,
+        consecutive_failures -> Integer,
+        next_retry_at -> Nullable<Text>,
+        last_cycle_status -> Nullable<Text>,
+        last_cycle_duration_ms -> Nullable<BigInt>,
+    }
+}
+
+diesel::table! {
+    sync_entity_metadata (entity, entity_id) {
+        entity -> Text,
+        entity_id -> Text,
+        last_event_id -> Text,
+        last_client_timestamp -> Text,
+        last_seq -> BigInt,
+    }
+}
+
+diesel::table! {
+    sync_outbox (event_id) {
+        event_id -> Text,
+        entity -> Text,
+        entity_id -> Text,
+        op -> Text,
+        client_timestamp -> Text,
+        payload -> Text,
+        payload_key_version -> Integer,
+        sent -> Integer,
+        status -> Text,
+        retry_count -> Integer,
+        next_retry_at -> Nullable<Text>,
+        last_error -> Nullable<Text>,
+        last_error_code -> Nullable<Text>,
+        device_id -> Nullable<Text>,
+        created_at -> Text,
+    }
+}
+
+diesel::table! {
+    sync_table_state (table_name) {
+        table_name -> Text,
+        enabled -> Integer,
+        last_snapshot_restore_at -> Nullable<Text>,
+        last_incremental_apply_at -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
     quotes (id) {
         id -> Text,
         asset_id -> Text,
@@ -374,6 +454,13 @@ diesel::allow_tables_to_appear_in_same_query!(
     platforms,
     quote_sync_state,
     quotes,
+    sync_applied_events,
+    sync_cursor,
+    sync_device_config,
+    sync_engine_state,
+    sync_entity_metadata,
+    sync_outbox,
+    sync_table_state,
     taxonomies,
     taxonomy_categories,
 );

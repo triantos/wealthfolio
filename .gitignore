@@ -62,8 +62,8 @@ db/*
 target/
 **/*.rs.bk
 
-# Tauri generated
-apps/tauri/gen/
+# Tauri generated (schemas are auto-generated; apple project is manually maintained)
+apps/tauri/gen/schemas/
 
 # OS generated files
 .DS_Store

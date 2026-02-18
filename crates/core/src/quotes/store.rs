@@ -97,6 +97,20 @@ pub trait QuoteStore: Send + Sync {
     /// The number of quotes that were deleted
     async fn delete_quotes_for_asset(&self, asset_id: &AssetId) -> Result<usize>;
 
+    /// Deletes all non-manual (provider) quotes for a specific asset.
+    ///
+    /// Manual quotes (source = "MANUAL") are preserved. This is used before
+    /// re-inserting fresh provider data to remove stale/wrong dates.
+    ///
+    /// # Arguments
+    ///
+    /// * `asset_id` - The asset whose provider quotes should be deleted
+    ///
+    /// # Returns
+    ///
+    /// The number of quotes that were deleted
+    async fn delete_provider_quotes_for_asset(&self, asset_id: &AssetId) -> Result<usize>;
+
     // =========================================================================
     // Single Asset Queries (Strong Types)
     // =========================================================================

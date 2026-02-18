@@ -12,7 +12,7 @@ export * from "./crypto";
 export { syncStorage } from "./storage/keyring";
 
 // Service
-export { syncService } from "./services/sync-service";
+export { deviceSyncService, syncService } from "./services/sync-service";
 
 // Provider
 export { DeviceSyncProvider, useDeviceSync } from "./providers/device-sync-provider";

@@ -128,6 +128,10 @@ export const getHolding = async (accountId: string, assetId: string): Promise<Ho
   return invoke<Holding | null>("get_holding", { accountId, assetId });
 };
 
+export const getAssetHoldings = async (assetId: string): Promise<Holding[]> => {
+  return invoke<Holding[]>("get_asset_holdings", { assetId });
+};
+
 export const getPortfolioAllocations = async (accountId: string): Promise<PortfolioAllocations> => {
   return invoke<PortfolioAllocations>("get_portfolio_allocations", { accountId });
 };
@@ -165,6 +169,12 @@ export interface HoldingInput {
   averageCost?: string;
   /** Exchange MIC code for new holdings (e.g., "XNAS", "XTSE"). Required for symbols without Yahoo suffixes. */
   exchangeMic?: string;
+  /** Asset name for new custom assets */
+  name?: string;
+  /** Data source (e.g., "MANUAL" for custom assets) — sets quote mode to manual */
+  dataSource?: string;
+  /** Asset kind (e.g., "INVESTMENT", "OTHER") */
+  assetKind?: string;
 }
 
 /**

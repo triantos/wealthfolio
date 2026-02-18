@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
+use std::time::Instant;
 
 use crate::{
     ai_environment::ServerAiEnvironment, auth::AuthManager, config::Config,
@@ -58,6 +59,12 @@ use wealthfolio_storage_sqlite::{
     taxonomies::TaxonomyRepository,
 };
 
+/// In-memory cache for the current access token to avoid hitting Supabase on every request.
+pub struct CachedAccessToken {
+    pub token: String,
+    pub expires_at: Instant,
+}
+
 pub struct AppState {
     /// Domain event sink for emitting events after mutations.
     /// Note: The sink is used by services injected at construction time; this field
@@ -96,6 +103,7 @@ pub struct AppState {
     pub auth: Option<Arc<AuthManager>>,
     pub device_enroll_service: Arc<DeviceEnrollService>,
     pub health_service: Arc<dyn HealthServiceTrait + Send + Sync>,
+    pub token_cache: tokio::sync::RwLock<Option<CachedAccessToken>>,
 }
 
 pub fn init_tracing() {
@@ -440,5 +448,6 @@ pub async fn build_state(config: &Config) -> anyhow::Result<Arc<AppState>> {
         auth: auth_manager,
         device_enroll_service,
         health_service,
+        token_cache: tokio::sync::RwLock::new(None),
     }))
 }

@@ -83,6 +83,8 @@ interface AccountMetricsProps {
   performance?: PerformanceMetrics | null;
   className?: string;
   isLoading?: boolean;
+  isPerformanceLoading?: boolean;
+  performanceError?: string;
   /** If true, hides the inline balance edit (HOLDINGS mode accounts should use the Update Holdings sheet) */
   hideBalanceEdit?: boolean;
   /** If true, shows only Volatility/MaxDrawdown and hides TWR/MWR (HOLDINGS mode doesn't track cash flows) */
@@ -94,10 +96,13 @@ const AccountMetrics: React.FC<AccountMetricsProps> = ({
   performance,
   className,
   isLoading,
+  isPerformanceLoading,
+  performanceError,
   hideBalanceEdit = false,
   isHoldingsMode = false,
 }) => {
-  if (isLoading || !performance || !valuation)
+  // Full skeleton only when valuation data itself is loading
+  if (isLoading || !valuation)
     return (
       <Card className={className}>
         <CardHeader className="flex flex-row items-center justify-between">
@@ -187,8 +192,8 @@ const AccountMetrics: React.FC<AccountMetricsProps> = ({
         },
       ];
 
-  const formattedStartDate = formatDate(performance?.periodStartDate || "");
-  const formattedEndDate = formatDate(performance?.periodEndDate || "");
+  const formattedStartDate = performance ? formatDate(performance.periodStartDate || "") : "";
+  const formattedEndDate = performance ? formatDate(performance.periodEndDate || "") : "";
   const lastUpdated = valuation?.calculatedAt ? formatDate(valuation.calculatedAt) : null;
 
   return (
@@ -220,12 +225,17 @@ const AccountMetrics: React.FC<AccountMetricsProps> = ({
 
         <PerformanceGrid
           performance={performance}
-          isLoading={isLoading}
+          isLoading={isPerformanceLoading}
+          performanceError={performanceError}
           isHoldingsMode={isHoldingsMode}
         />
       </CardContent>
       <CardFooter className="mt-auto flex flex-col items-start gap-1 px-3">
-        {isHoldingsMode ? (
+        {performanceError ? (
+          <p className="text-muted-foreground m-0 p-0 text-xs">
+            {lastUpdated && <>Last updated: {lastUpdated}</>}
+          </p>
+        ) : isHoldingsMode ? (
           <>
             <p className="text-muted-foreground m-0 p-0 text-xs">
               TWR/MWR not available. Requires transaction tracking.

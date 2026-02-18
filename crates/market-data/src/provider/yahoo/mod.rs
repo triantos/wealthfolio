@@ -316,7 +316,6 @@ impl YahooProvider {
 
     async fn search_raw_with_currency(
         &self,
-        query: &str,
         encoded_query: &str,
     ) -> Result<Vec<SearchResult>, MarketDataError> {
         let url = format!(
@@ -342,11 +341,6 @@ impl YahooProvider {
                 provider: "YAHOO".to_string(),
                 message: format!("Yahoo raw search body read failed: {}", e),
             })?;
-
-        debug!(
-            "[YAHOO SEARCH RAW PAYLOAD] query='{}' payload={}",
-            query, payload
-        );
 
         Self::parse_raw_search_payload(&payload)
     }
@@ -824,7 +818,7 @@ impl MarketDataProvider for YahooProvider {
         debug!("Searching Yahoo for '{}'", query);
 
         // First try raw endpoint parsing so we can preserve currency (e.g., GBP vs GBp on LSE ETFs).
-        match self.search_raw_with_currency(query, &encoded_query).await {
+        match self.search_raw_with_currency(&encoded_query).await {
             Ok(results) if !results.is_empty() => return Ok(results),
             Ok(_) => debug!(
                 "Yahoo raw search returned no quotes for '{}', falling back to connector API",

@@ -18,7 +18,16 @@ import type {
   SuccessResponse,
   ResetTeamSyncResponse,
 } from "@/features/devices-sync/types";
-import type { ImportRunsRequest, BackendSyncStateResult, BackendEnableSyncResult } from "../types";
+import type {
+  ImportRunsRequest,
+  BackendSyncStateResult,
+  BackendEnableSyncResult,
+  BackendSyncEngineStatusResult,
+  BackendSyncBootstrapResult,
+  BackendSyncCycleResult,
+  BackendSyncBackgroundEngineResult,
+  BackendSyncSnapshotUploadResult,
+} from "../types";
 
 import { invoke } from "./platform";
 
@@ -27,7 +36,7 @@ import { invoke } from "./platform";
 // ============================================================================
 
 export async function syncBrokerData(): Promise<void> {
-  return invoke<void>("sync_broker_data");
+  return invoke<void>("broker_ingest_run");
 }
 
 export async function getSyncedAccounts(): Promise<Account[]> {
@@ -59,11 +68,11 @@ export async function getUserInfo(): Promise<UserInfo> {
 }
 
 export async function getBrokerSyncStates(): Promise<BrokerSyncState[]> {
-  return invoke<BrokerSyncState[]>("get_broker_sync_states");
+  return invoke<BrokerSyncState[]>("get_broker_ingest_states");
 }
 
 export async function getImportRuns(request?: ImportRunsRequest): Promise<ImportRun[]> {
-  return invoke<ImportRun[]>("get_import_runs", {
+  return invoke<ImportRun[]>("get_data_import_runs", {
     runType: request?.runType,
     limit: request?.limit,
     offset: request?.offset,
@@ -89,6 +98,37 @@ export const clearDeviceSyncData = async (): Promise<void> => {
 export const reinitializeDeviceSync = async (): Promise<BackendEnableSyncResult> => {
   return invoke<BackendEnableSyncResult>("reinitialize_device_sync");
 };
+
+export const getSyncEngineStatus = async (): Promise<BackendSyncEngineStatusResult> => {
+  return invoke<BackendSyncEngineStatusResult>("device_sync_engine_status");
+};
+
+export const syncBootstrapSnapshotIfNeeded = async (): Promise<BackendSyncBootstrapResult> => {
+  return invoke<BackendSyncBootstrapResult>("device_sync_bootstrap_snapshot_if_needed");
+};
+
+export const syncTriggerCycle = async (): Promise<BackendSyncCycleResult> => {
+  return invoke<BackendSyncCycleResult>("device_sync_trigger_cycle");
+};
+
+export const deviceSyncStartBackgroundEngine =
+  async (): Promise<BackendSyncBackgroundEngineResult> => {
+    return invoke<BackendSyncBackgroundEngineResult>("device_sync_start_background_engine");
+  };
+
+export const deviceSyncStopBackgroundEngine =
+  async (): Promise<BackendSyncBackgroundEngineResult> => {
+    return invoke<BackendSyncBackgroundEngineResult>("device_sync_stop_background_engine");
+  };
+
+export const deviceSyncGenerateSnapshotNow = async (): Promise<BackendSyncSnapshotUploadResult> => {
+  return invoke<BackendSyncSnapshotUploadResult>("device_sync_generate_snapshot_now");
+};
+
+export const deviceSyncCancelSnapshotUpload =
+  async (): Promise<BackendSyncBackgroundEngineResult> => {
+    return invoke<BackendSyncBackgroundEngineResult>("device_sync_cancel_snapshot_upload");
+  };
 
 // Device Management Commands
 export const getDevice = async (deviceId?: string): Promise<Device> => {

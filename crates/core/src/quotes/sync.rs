@@ -504,6 +504,7 @@ where
                 .unwrap_or_else(|| DATA_SOURCE_YAHOO.to_string()),
             quote_symbol: None, // Derived from asset during fetch
             currency: asset.quote_ccy.clone(),
+            purge_provider_quotes: false,
         })
     }
 
@@ -630,6 +631,17 @@ where
                 let quotes_count = quotes.len();
 
                 if quotes_count > 0 {
+                    // Purge stale provider quotes before inserting fresh data
+                    if plan.purge_provider_quotes {
+                        if let Err(e) = self
+                            .quote_store
+                            .delete_provider_quotes_for_asset(&asset_id)
+                            .await
+                        {
+                            warn!("Failed to purge provider quotes for {}: {:?}", asset.id, e);
+                        }
+                    }
+
                     // Save to store
                     match self.quote_store.upsert_quotes(&quotes).await {
                         Ok(_) => {
@@ -937,6 +949,7 @@ where
                             data_source: state.data_source.clone(),
                             quote_symbol: None,
                             currency: asset.quote_ccy.clone(),
+                            purge_provider_quotes: false,
                         });
                     }
                 }
@@ -963,6 +976,7 @@ where
                             data_source: state.data_source.clone(),
                             quote_symbol: None,
                             currency: asset.quote_ccy.clone(),
+                            purge_provider_quotes: false,
                         });
                     }
                 }
@@ -998,6 +1012,7 @@ where
                 data_source: state.data_source.clone(),
                 quote_symbol: None,
                 currency: asset.quote_ccy.clone(),
+                purge_provider_quotes: false,
             });
         }
 
@@ -1190,6 +1205,7 @@ where
                             data_source: data_source.clone(),
                             quote_symbol: None,
                             currency: asset.quote_ccy.clone(),
+                            purge_provider_quotes: false,
                         });
                     }
                 }
@@ -1207,6 +1223,7 @@ where
                             data_source: data_source.clone(),
                             quote_symbol: None,
                             currency: asset.quote_ccy.clone(),
+                            purge_provider_quotes: false,
                         });
                     }
                 }
@@ -1230,6 +1247,7 @@ where
                 data_source,
                 quote_symbol: None,
                 currency: asset.quote_ccy.clone(),
+                purge_provider_quotes: matches!(mode, SyncMode::BackfillHistory { .. }),
             });
         }
 

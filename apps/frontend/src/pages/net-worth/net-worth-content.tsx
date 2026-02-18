@@ -1,16 +1,8 @@
-import { Skeleton } from "@wealthfolio/ui/components/ui/skeleton";
-import { Icons } from "@wealthfolio/ui/components/ui/icons";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@wealthfolio/ui/components/ui/tooltip";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@wealthfolio/ui/components/ui/collapsible";
+import { useNetWorth, useNetWorthHistory } from "@/hooks/use-alternative-assets";
+import { useSettingsContext } from "@/lib/settings-provider";
+import type { DateRange } from "@/lib/types";
+import { formatDateISO } from "@/lib/utils";
+import Balance from "@/pages/dashboard/balance";
 import {
   GainAmount,
   GainPercent,
@@ -20,14 +12,22 @@ import {
   usePersistentState,
   type TimePeriod,
 } from "@wealthfolio/ui";
-import { useNetWorth, useNetWorthHistory } from "@/hooks/use-alternative-assets";
-import { useSettingsContext } from "@/lib/settings-provider";
-import { formatDateISO } from "@/lib/utils";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@wealthfolio/ui/components/ui/collapsible";
+import { Icons } from "@wealthfolio/ui/components/ui/icons";
+import { Skeleton } from "@wealthfolio/ui/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@wealthfolio/ui/components/ui/tooltip";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import type { DateRange } from "@/lib/types";
 import { NetWorthChart } from "./net-worth-chart";
-import Balance from "@/pages/dashboard/balance";
 
 // Goldish orange for net worth theme (matches chart)
 const THEME_COLOR = "hsl(38 75% 50%)";
@@ -507,7 +507,7 @@ export function NetWorthContent({ onAddAsset, onAddLiability }: NetWorthContentP
 
       {/* Content section with gradient background - starts at 0.15 to match chart bottom */}
       <div
-        className="grow px-4 pt-4 md:px-6 md:pt-6 lg:px-10 lg:pt-8"
+        className="grow px-4 pb-[calc(var(--mobile-nav-ui-height)+max(var(--mobile-nav-gap),env(safe-area-inset-bottom)))] pt-4 md:px-6 md:pb-6 md:pt-6 lg:px-10 lg:pb-8 lg:pt-8"
         style={{
           backgroundImage: `linear-gradient(to bottom, ${THEME_COLOR.replace(")", " / 0.15)")}, ${THEME_COLOR.replace(")", " / 0.08)")} 50%, ${THEME_COLOR.replace(")", " / 0)")} 100%)`,
         }}

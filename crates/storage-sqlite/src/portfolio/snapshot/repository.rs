@@ -13,9 +13,13 @@ use std::sync::Arc;
 use super::model::AccountStateSnapshotDB;
 use crate::db::{get_connection, WriteHandle};
 use crate::errors::StorageError;
+use crate::sync::{write_outbox_event, OutboxWriteRequest};
 use wealthfolio_core::constants::PORTFOLIO_TOTAL_ACCOUNT_ID;
 use wealthfolio_core::errors::{Error, Result};
-use wealthfolio_core::portfolio::snapshot::{AccountStateSnapshot, SnapshotRepositoryTrait};
+use wealthfolio_core::portfolio::snapshot::{
+    AccountStateSnapshot, SnapshotRepositoryTrait, SnapshotSource,
+};
+use wealthfolio_core::sync::{SyncEntity, SyncOperation};
 
 pub struct SnapshotRepository {
     pool: Arc<Pool<ConnectionManager<SqliteConnection>>>,
@@ -289,13 +293,36 @@ impl SnapshotRepository {
                     account_id_owned,
                     date_strings // Use the moved date_strings
                 );
+
+                // Find non-calculated/synthetic snapshots to emit delete events
+                let syncable_rows: Vec<AccountStateSnapshotDB> = holdings_snapshots
+                    .filter(account_id.eq(&account_id_owned))
+                    .filter(snapshot_date.eq_any(&date_strings))
+                    .filter(source.ne("CALCULATED"))
+                    .filter(source.ne("SYNTHETIC"))
+                    .load::<AccountStateSnapshotDB>(conn)
+                    .map_err(StorageError::from)?;
+
                 diesel::delete(
                     holdings_snapshots
-                        .filter(account_id.eq(account_id_owned))
-                        .filter(snapshot_date.eq_any(date_strings)),
+                        .filter(account_id.eq(&account_id_owned))
+                        .filter(snapshot_date.eq_any(&date_strings)),
                 )
                 .execute(conn)
                 .map_err(StorageError::from)?;
+
+                for row in &syncable_rows {
+                    write_outbox_event(
+                        conn,
+                        OutboxWriteRequest::new(
+                            SyncEntity::Snapshot,
+                            row.id.clone(),
+                            SyncOperation::Delete,
+                            serde_json::json!({ "id": row.id }),
+                        ),
+                    )?;
+                }
+
                 Ok(())
             })
             .await
@@ -694,12 +721,32 @@ impl SnapshotRepository {
             snapshot.account_id, snapshot.snapshot_date
         );
 
+        let snapshot_source = snapshot.source;
+        let snapshot_id = snapshot.id.clone();
+
         self.writer
             .exec(move |conn| {
                 diesel::replace_into(holdings_snapshots)
                     .values(&db_model)
                     .execute(conn)
                     .map_err(StorageError::from)?;
+
+                if !matches!(
+                    snapshot_source,
+                    SnapshotSource::Calculated | SnapshotSource::Synthetic
+                ) {
+                    let payload = serde_json::to_value(&db_model)?;
+                    write_outbox_event(
+                        conn,
+                        OutboxWriteRequest::new(
+                            SyncEntity::Snapshot,
+                            snapshot_id,
+                            SyncOperation::Create,
+                            payload,
+                        ),
+                    )?;
+                }
+
                 Ok(())
             })
             .await

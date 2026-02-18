@@ -9,7 +9,7 @@ use crate::events::{BROKER_SYNC_COMPLETE, BROKER_SYNC_ERROR, BROKER_SYNC_START};
 use wealthfolio_connect::{
     broker::BrokerApiClient, fetch_subscription_plans_public, BrokerAccount, BrokerConnection,
     PlansResponse, Platform, SyncConfig, SyncOrchestrator, SyncProgressPayload,
-    SyncProgressReporter, SyncResult, UserInfo, DEFAULT_CLOUD_API_URL,
+    SyncProgressReporter, SyncResult, UserInfo,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -97,6 +97,15 @@ pub async fn sync_broker_data(
     });
 
     Ok(())
+}
+
+/// Alias for `sync_broker_data` using explicit broker-ingest vocabulary.
+#[tauri::command]
+pub async fn broker_ingest_run(
+    app: AppHandle,
+    state: State<'_, Arc<ServiceContext>>,
+) -> Result<(), String> {
+    sync_broker_data(app, state).await
 }
 
 /// Core broker sync logic that can be called from Tauri command or scheduler.
@@ -220,8 +229,13 @@ pub async fn get_subscription_plans(
 pub async fn get_subscription_plans_public() -> Result<PlansResponse, String> {
     info!("Fetching subscription plans from cloud API (public)...");
 
-    let base_url =
-        std::env::var("CONNECT_API_URL").unwrap_or_else(|_| DEFAULT_CLOUD_API_URL.to_string());
+    let base_url = std::env::var("CONNECT_API_URL")
+        .ok()
+        .map(|v| v.trim().trim_end_matches('/').to_string())
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| {
+            "CONNECT_API_URL not configured. Connect API operations are disabled.".to_string()
+        })?;
 
     match fetch_subscription_plans_public(&base_url).await {
         Ok(response) => {
@@ -272,6 +286,14 @@ pub async fn get_broker_sync_states(
         .map_err(|e| format!("Failed to get broker sync states: {}", e))
 }
 
+/// Alias for `get_broker_sync_states` using explicit broker-ingest vocabulary.
+#[tauri::command]
+pub async fn get_broker_ingest_states(
+    state: State<'_, Arc<ServiceContext>>,
+) -> Result<Vec<wealthfolio_core::sync::BrokerSyncState>, String> {
+    get_broker_sync_states(state).await
+}
+
 /// Get import runs with optional type filter and pagination
 #[tauri::command]
 pub async fn get_import_runs(
@@ -290,6 +312,18 @@ pub async fn get_import_runs(
         .sync_service()
         .get_import_runs(run_type.as_deref(), limit, offset)
         .map_err(|e| format!("Failed to get import runs: {}", e))
+}
+
+/// Alias for `get_import_runs` using neutral terminology, because runs include
+/// both broker ingest and manual CSV import operations.
+#[tauri::command]
+pub async fn get_data_import_runs(
+    run_type: Option<String>,
+    limit: Option<i64>,
+    offset: Option<i64>,
+    state: State<'_, Arc<ServiceContext>>,
+) -> Result<Vec<wealthfolio_core::sync::ImportRun>, String> {
+    get_import_runs(run_type, limit, offset, state).await
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

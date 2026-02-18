@@ -31,6 +31,7 @@ export const COMMANDS: CommandMap = {
   restore_database: { method: "POST", path: "/utilities/database/restore" },
   get_holdings: { method: "GET", path: "/holdings" },
   get_holding: { method: "GET", path: "/holdings/item" },
+  get_asset_holdings: { method: "GET", path: "/holdings/by-asset" },
   get_historical_valuations: { method: "GET", path: "/valuations/history" },
   get_latest_valuations: { method: "GET", path: "/valuations/latest" },
   get_portfolio_allocations: { method: "GET", path: "/allocations" },
@@ -177,6 +178,7 @@ export const COMMANDS: CommandMap = {
   list_broker_connections: { method: "GET", path: "/connect/connections" },
   list_broker_accounts: { method: "GET", path: "/connect/accounts" },
   sync_broker_data: { method: "POST", path: "/connect/sync" },
+  broker_ingest_run: { method: "POST", path: "/connect/sync" },
   sync_broker_connections: { method: "POST", path: "/connect/sync/connections" },
   sync_broker_accounts: { method: "POST", path: "/connect/sync/accounts" },
   sync_broker_activities: { method: "POST", path: "/connect/sync/activities" },
@@ -187,12 +189,36 @@ export const COMMANDS: CommandMap = {
   get_synced_accounts: { method: "GET", path: "/connect/synced-accounts" },
   get_platforms: { method: "GET", path: "/connect/platforms" },
   get_broker_sync_states: { method: "GET", path: "/connect/sync-states" },
+  get_broker_ingest_states: { method: "GET", path: "/connect/sync-states" },
   get_import_runs: { method: "GET", path: "/connect/import-runs" },
+  get_data_import_runs: { method: "GET", path: "/connect/import-runs" },
   // Device Sync / Enrollment
   get_device_sync_state: { method: "GET", path: "/connect/device/sync-state" },
   enable_device_sync: { method: "POST", path: "/connect/device/enable" },
   clear_device_sync_data: { method: "DELETE", path: "/connect/device/sync-data" },
   reinitialize_device_sync: { method: "POST", path: "/connect/device/reinitialize" },
+  device_sync_engine_status: { method: "GET", path: "/connect/device/engine-status" },
+  device_sync_bootstrap_snapshot_if_needed: {
+    method: "POST",
+    path: "/connect/device/bootstrap-snapshot",
+  },
+  device_sync_trigger_cycle: { method: "POST", path: "/connect/device/trigger-cycle" },
+  device_sync_start_background_engine: {
+    method: "POST",
+    path: "/connect/device/start-background",
+  },
+  device_sync_stop_background_engine: {
+    method: "POST",
+    path: "/connect/device/stop-background",
+  },
+  device_sync_generate_snapshot_now: {
+    method: "POST",
+    path: "/connect/device/generate-snapshot",
+  },
+  device_sync_cancel_snapshot_upload: {
+    method: "POST",
+    path: "/connect/device/cancel-snapshot",
+  },
   // Net Worth
   get_net_worth: { method: "GET", path: "/net-worth" },
   get_net_worth_history: { method: "GET", path: "/net-worth/history" },
@@ -311,6 +337,11 @@ export const invoke = async <T>(command: string, payload?: Record<string, unknow
       params.set("accountId", accountId);
       params.set("assetId", assetId);
       url += `?${params.toString()}`;
+      break;
+    }
+    case "get_asset_holdings": {
+      const p = payload as { assetId: string };
+      url += `?assetId=${encodeURIComponent(p.assetId)}`;
       break;
     }
     case "get_historical_valuations": {
@@ -981,6 +1012,7 @@ export const invoke = async <T>(command: string, payload?: Record<string, unknow
     case "list_broker_connections":
     case "list_broker_accounts":
     case "sync_broker_data":
+    case "broker_ingest_run":
     case "sync_broker_connections":
     case "sync_broker_accounts":
     case "sync_broker_activities":
@@ -990,6 +1022,7 @@ export const invoke = async <T>(command: string, payload?: Record<string, unknow
     case "get_synced_accounts":
     case "get_platforms":
     case "get_broker_sync_states":
+    case "get_broker_ingest_states":
     // Device Sync / Enrollment (falls through)
     // eslint-disable-next-line no-fallthrough
     case "get_device_sync_state":
@@ -997,7 +1030,8 @@ export const invoke = async <T>(command: string, payload?: Record<string, unknow
     case "clear_device_sync_data":
     case "reinitialize_device_sync":
       break;
-    case "get_import_runs": {
+    case "get_import_runs":
+    case "get_data_import_runs": {
       const { runType, limit, offset } = (payload ?? {}) as {
         runType?: string;
         limit?: number;
@@ -1184,10 +1218,20 @@ export const invoke = async <T>(command: string, payload?: Record<string, unknow
     "list_broker_connections",
     "list_broker_accounts",
     "get_broker_sync_states",
+    "get_broker_ingest_states",
     "get_import_runs",
+    "get_data_import_runs",
     "get_synced_accounts",
     "get_platforms",
     "sync_broker_data",
+    "broker_ingest_run",
+    "device_sync_engine_status",
+    "device_sync_bootstrap_snapshot_if_needed",
+    "device_sync_trigger_cycle",
+    "device_sync_start_background_engine",
+    "device_sync_stop_background_engine",
+    "device_sync_generate_snapshot_now",
+    "device_sync_cancel_snapshot_upload",
     "store_sync_session",
     "clear_sync_session",
     "get_sync_session_status",

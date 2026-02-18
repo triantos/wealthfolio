@@ -6,20 +6,27 @@
 use log::{debug, error};
 
 use crate::secret_store::KeyringSecretStore;
-use wealthfolio_connect::{ConnectApiClient, DEFAULT_CLOUD_API_URL};
+use wealthfolio_connect::ConnectApiClient;
 use wealthfolio_core::secrets::SecretStore;
 
 /// Secret key for storing the cloud API access token.
 /// Note: SecretStore adds "wealthfolio_" prefix automatically.
 const CLOUD_ACCESS_TOKEN_KEY: &str = "sync_access_token";
 
-/// Returns the cloud API base URL from environment or default.
-fn cloud_api_base_url() -> String {
+/// Returns true when the Connect API URL is configured via environment.
+pub fn is_connect_configured() -> bool {
+    std::env::var("CONNECT_API_URL")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .is_some()
+}
+
+/// Returns the cloud API base URL from environment when configured.
+fn cloud_api_base_url() -> Option<String> {
     std::env::var("CONNECT_API_URL")
         .ok()
         .map(|v| v.trim().trim_end_matches('/').to_string())
         .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| DEFAULT_CLOUD_API_URL.to_string())
 }
 
 /// Service for interacting with Wealthfolio Connect cloud API.
@@ -42,6 +49,10 @@ impl ConnectService {
     /// Returns `Ok(ConnectApiClient)` if a valid token is found and the client
     /// can be created, or `Err(String)` if no token is configured or an error occurs.
     pub fn get_api_client(&self) -> Result<ConnectApiClient, String> {
+        let cloud_api_base_url = cloud_api_base_url().ok_or_else(|| {
+            "CONNECT_API_URL not configured. Connect API operations are disabled.".to_string()
+        })?;
+
         let access_token = match KeyringSecretStore.get_secret(CLOUD_ACCESS_TOKEN_KEY) {
             Ok(Some(token)) => token,
             Ok(None) => {
@@ -54,7 +65,7 @@ impl ConnectService {
             }
         };
 
-        ConnectApiClient::new(&cloud_api_base_url(), &access_token).map_err(|e| e.to_string())
+        ConnectApiClient::new(&cloud_api_base_url, &access_token).map_err(|e| e.to_string())
     }
 
     /// Check if the current user has an active subscription.

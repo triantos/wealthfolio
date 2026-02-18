@@ -7,10 +7,12 @@ use crate::errors::StorageError;
 use crate::schema::goals;
 use crate::schema::goals::dsl::*;
 use crate::schema::goals_allocation;
+use crate::sync::{write_outbox_event, OutboxWriteRequest};
 use async_trait::async_trait;
 use diesel::prelude::*;
 use diesel::r2d2::{self, Pool};
 use diesel::SqliteConnection;
+use wealthfolio_core::sync::{SyncEntity, SyncOperation};
 
 use std::sync::Arc;
 use uuid::Uuid;
@@ -68,7 +70,18 @@ impl GoalRepositoryTrait for GoalRepository {
                     .returning(GoalDB::as_returning())
                     .get_result(conn)
                     .map_err(StorageError::from)?;
-                Ok(Goal::from(result_db))
+                let payload_db = result_db.clone();
+                let goal = Goal::from(result_db);
+                write_outbox_event(
+                    conn,
+                    OutboxWriteRequest::new(
+                        SyncEntity::Goal,
+                        goal.id.clone(),
+                        SyncOperation::Create,
+                        serde_json::to_value(&payload_db)?,
+                    ),
+                )?;
+                Ok(goal)
             })
             .await
     }
@@ -93,17 +106,43 @@ impl GoalRepositoryTrait for GoalRepository {
                     .filter(id.eq(goal_id_owned))
                     .first::<GoalDB>(conn)
                     .map_err(StorageError::from)?;
-                Ok(Goal::from(result_db))
+                let payload_db = result_db.clone();
+                let goal = Goal::from(result_db);
+                write_outbox_event(
+                    conn,
+                    OutboxWriteRequest::new(
+                        SyncEntity::Goal,
+                        goal.id.clone(),
+                        SyncOperation::Update,
+                        serde_json::to_value(&payload_db)?,
+                    ),
+                )?;
+                Ok(goal)
             })
             .await
     }
 
     async fn delete_goal(&self, goal_id_to_delete: String) -> Result<usize> {
+        let goal_id_for_event = goal_id_to_delete.clone();
         self.writer
             .exec(move |conn: &mut SqliteConnection| -> Result<usize> {
-                Ok(diesel::delete(goals.find(goal_id_to_delete))
+                let affected = diesel::delete(goals.find(goal_id_to_delete))
                     .execute(conn)
-                    .map_err(StorageError::from)?)
+                    .map_err(StorageError::from)?;
+
+                if affected > 0 {
+                    write_outbox_event(
+                        conn,
+                        OutboxWriteRequest::new(
+                            SyncEntity::Goal,
+                            goal_id_for_event.clone(),
+                            SyncOperation::Delete,
+                            serde_json::json!({ "id": goal_id_for_event }),
+                        ),
+                    )?;
+                }
+
+                Ok(affected)
             })
             .await
     }
@@ -125,6 +164,15 @@ impl GoalRepositoryTrait for GoalRepository {
                         .set(&allocation_db)
                         .execute(conn)
                         .map_err(StorageError::from)?;
+                    write_outbox_event(
+                        conn,
+                        OutboxWriteRequest::new(
+                            SyncEntity::GoalsAllocation,
+                            allocation_db.id.clone(),
+                            SyncOperation::Update,
+                            serde_json::to_value(&allocation_db)?,
+                        ),
+                    )?;
                 }
                 Ok(affected_rows)
             })

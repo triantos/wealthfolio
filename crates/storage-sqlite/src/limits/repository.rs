@@ -14,6 +14,8 @@ use super::model::ContributionLimitDB;
 use crate::db::{get_connection, WriteHandle};
 use crate::errors::StorageError;
 use crate::schema::contribution_limits;
+use crate::sync::{write_outbox_event, OutboxWriteRequest};
+use wealthfolio_core::sync::{SyncEntity, SyncOperation};
 
 pub struct ContributionLimitRepository {
     pool: Arc<Pool<ConnectionManager<SqliteConnection>>>,
@@ -83,6 +85,15 @@ impl ContributionLimitRepositoryTrait for ContributionLimitRepository {
                         .values(new_limit_record)
                         .get_result::<ContributionLimitDB>(conn)
                         .map_err(StorageError::from)?;
+                    write_outbox_event(
+                        conn,
+                        OutboxWriteRequest::new(
+                            SyncEntity::ContributionLimit,
+                            result_db.id.clone(),
+                            SyncOperation::Create,
+                            serde_json::to_value(&result_db)?,
+                        ),
+                    )?;
                     Ok(ContributionLimit::from(result_db))
                 },
             )
@@ -114,6 +125,15 @@ impl ContributionLimitRepositoryTrait for ContributionLimitRepository {
                         ))
                         .get_result::<ContributionLimitDB>(conn)
                         .map_err(StorageError::from)?;
+                    write_outbox_event(
+                        conn,
+                        OutboxWriteRequest::new(
+                            SyncEntity::ContributionLimit,
+                            result_db.id.clone(),
+                            SyncOperation::Update,
+                            serde_json::to_value(&result_db)?,
+                        ),
+                    )?;
                     Ok(ContributionLimit::from(result_db))
                 },
             )
@@ -125,9 +145,20 @@ impl ContributionLimitRepositoryTrait for ContributionLimitRepository {
         self.writer
             .exec(move |conn: &mut SqliteConnection| -> Result<()> {
                 // id_owned is moved
-                diesel::delete(contribution_limits::table.find(id_owned))
+                let affected = diesel::delete(contribution_limits::table.find(id_owned.clone()))
                     .execute(conn)
                     .map_err(StorageError::from)?;
+                if affected > 0 {
+                    write_outbox_event(
+                        conn,
+                        OutboxWriteRequest::new(
+                            SyncEntity::ContributionLimit,
+                            id_owned.clone(),
+                            SyncOperation::Delete,
+                            serde_json::json!({ "id": id_owned }),
+                        ),
+                    )?;
+                }
                 Ok(())
             })
             .await

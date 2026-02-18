@@ -18,7 +18,7 @@ mod updater;
 use std::sync::Arc;
 
 use dotenvy::dotenv;
-use log::error;
+use log::{error, warn};
 use tauri::{AppHandle, Emitter, Manager};
 
 use events::emit_app_ready;
@@ -95,6 +95,20 @@ mod desktop {
         tauri::async_runtime::spawn(async move {
             scheduler::run_startup_sync(&startup_handle, &startup_context).await;
         });
+
+        // Start background device sync engine (self-skips when device is not READY).
+        if crate::services::is_connect_configured() {
+            let device_sync_context = Arc::clone(&context);
+            tauri::async_runtime::spawn(async move {
+                if let Err(err) = crate::commands::device_sync::ensure_background_engine_started(
+                    device_sync_context,
+                )
+                .await
+                {
+                    log::warn!("Failed to start background device sync engine: {}", err);
+                }
+            });
+        }
 
         Ok(())
     }
@@ -262,6 +276,7 @@ pub fn run() {
             // Portfolio commands
             commands::portfolio::get_holdings,
             commands::portfolio::get_holding,
+            commands::portfolio::get_asset_holdings,
             commands::portfolio::get_portfolio_allocations,
             commands::portfolio::get_holdings_by_allocation,
             commands::portfolio::get_income_summary,
@@ -384,6 +399,7 @@ pub fn run() {
             commands::wealthfolio_connect::store_sync_session,
             commands::wealthfolio_connect::clear_sync_session,
             commands::brokers_sync::sync_broker_data,
+            commands::brokers_sync::broker_ingest_run,
             commands::brokers_sync::get_synced_accounts,
             commands::brokers_sync::get_platforms,
             commands::brokers_sync::list_broker_connections,
@@ -392,7 +408,9 @@ pub fn run() {
             commands::brokers_sync::get_subscription_plans_public,
             commands::brokers_sync::get_user_info,
             commands::brokers_sync::get_broker_sync_states,
+            commands::brokers_sync::get_broker_ingest_states,
             commands::brokers_sync::get_import_runs,
+            commands::brokers_sync::get_data_import_runs,
             // Device sync commands
             commands::device_sync::enroll_device,
             commands::device_sync::get_device,
@@ -406,6 +424,13 @@ pub fn run() {
             commands::device_sync::rotate_team_keys,
             commands::device_sync::commit_rotate_team_keys,
             commands::device_sync::reset_team_sync,
+            commands::device_sync::device_sync_bootstrap_snapshot_if_needed,
+            commands::device_sync::device_sync_engine_status,
+            commands::device_sync::device_sync_trigger_cycle,
+            commands::device_sync::device_sync_start_background_engine,
+            commands::device_sync::device_sync_stop_background_engine,
+            commands::device_sync::device_sync_generate_snapshot_now,
+            commands::device_sync::device_sync_cancel_snapshot_upload,
             // Pairing (Issuer - Trusted Device)
             commands::device_sync::create_pairing,
             commands::device_sync::get_pairing,
@@ -445,5 +470,23 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("Failed to build Wealthfolio application")
-        .run(|_handle, _event| {});
+        .run(|handle, event| {
+            #[cfg(desktop)]
+            if matches!(
+                event,
+                tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
+            ) {
+                if let Some(context) = handle.try_state::<Arc<context::ServiceContext>>() {
+                    let context = Arc::clone(context.inner());
+                    tauri::async_runtime::block_on(async move {
+                        if let Err(err) =
+                            crate::commands::device_sync::ensure_background_engine_stopped(context)
+                                .await
+                        {
+                            warn!("Failed to stop background device sync engine: {}", err);
+                        }
+                    });
+                }
+            }
+        });
 }

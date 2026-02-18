@@ -24,7 +24,7 @@
   },
   "productName": "Wealthfolio",
   "mainBinaryName": "Wealthfolio",
-  "version": "3.0.0-beta.4",
+  "version": "3.0.0-beta.5",
   "identifier": "com.teymz.wealthfolio",
   "plugins": {
     "updater": {
@@ -35,7 +35,10 @@
       }
     },
     "deep-link": {
-      "mobile": [{ "host": "auth.wealthfolio.app", "pathPrefix": ["/callback", "/auth/callback"] }],
+      "mobile": [
+        { "host": "connect.wealthfolio.app", "pathPrefix": ["/deeplink"] },
+        { "host": "connect-staging.wealthfolio.app", "pathPrefix": ["/deeplink"] }
+      ],
       "desktop": {
         "schemes": ["wealthfolio"]
       },

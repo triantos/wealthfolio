@@ -4,7 +4,8 @@
 <dict>
 	<key>com.apple.developer.associated-domains</key>
 	<array>
-		<string>applinks:auth.wealthfolio.app</string>
+		<string>applinks:connect.wealthfolio.app</string>
+		<string>applinks:connect-staging.wealthfolio.app</string>
 	</array>
 	<key>keychain-access-groups</key>
 	<array>

@@ -1,17 +1,19 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use chrono::{NaiveDate, Utc};
+use chrono::{NaiveDate, TimeZone, Utc};
+use log::debug;
 use rust_decimal::Decimal;
 use uuid::Uuid;
 
-use crate::assets::{AssetMetadata, AssetServiceTrait};
+use crate::assets::{AssetKind, AssetMetadata, AssetServiceTrait};
 use crate::errors::Result;
 use crate::events::{DomainEvent, DomainEventSink, NoOpDomainEventSink};
 use crate::fx::FxServiceTrait;
 use crate::portfolio::snapshot::{
     AccountStateSnapshot, Position, SnapshotServiceTrait, SnapshotSource,
 };
+use crate::quotes::{DataSource, Quote, QuoteServiceTrait};
 
 #[derive(Debug, Clone)]
 pub struct ManualHoldingInput {
@@ -21,6 +23,12 @@ pub struct ManualHoldingInput {
     pub quantity: Decimal,
     pub currency: String,
     pub average_cost: Decimal,
+    /// Asset name for custom assets
+    pub name: Option<String>,
+    /// Data source (e.g., "MANUAL") — when "MANUAL", quote mode is set to manual
+    pub data_source: Option<String>,
+    /// Asset kind string (e.g., "INVESTMENT", "OTHER")
+    pub asset_kind: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -44,6 +52,7 @@ pub struct ManualSnapshotService {
     asset_service: Arc<dyn AssetServiceTrait>,
     fx_service: Arc<dyn FxServiceTrait>,
     snapshot_service: Arc<dyn SnapshotServiceTrait>,
+    quote_service: Arc<dyn QuoteServiceTrait>,
     event_sink: Arc<dyn DomainEventSink>,
 }
 
@@ -52,11 +61,13 @@ impl ManualSnapshotService {
         asset_service: Arc<dyn AssetServiceTrait>,
         fx_service: Arc<dyn FxServiceTrait>,
         snapshot_service: Arc<dyn SnapshotServiceTrait>,
+        quote_service: Arc<dyn QuoteServiceTrait>,
     ) -> Self {
         Self {
             asset_service,
             fx_service,
             snapshot_service,
+            quote_service,
             event_sink: Arc::new(NoOpDomainEventSink),
         }
     }
@@ -84,11 +95,24 @@ impl ManualSnapshotService {
                 _ => Uuid::new_v4().to_string(),
             };
 
+            let kind = match holding.asset_kind.as_deref() {
+                Some("OTHER") => Some(AssetKind::Other),
+                Some("INVESTMENT") => Some(AssetKind::Investment),
+                _ => None,
+            };
+
             let metadata = AssetMetadata {
                 instrument_symbol: Some(holding.symbol.clone()),
                 instrument_exchange_mic: holding.exchange_mic.clone(),
                 display_code: Some(holding.symbol.clone()),
+                name: holding.name.clone(),
+                kind,
                 ..Default::default()
+            };
+
+            let quote_mode_hint = match holding.data_source.as_deref() {
+                Some("MANUAL") => Some("MANUAL".to_string()),
+                _ => None,
             };
 
             let asset = self
@@ -97,9 +121,30 @@ impl ManualSnapshotService {
                     &asset_id,
                     Some(holding.currency.clone()),
                     Some(metadata),
-                    None,
+                    quote_mode_hint.clone(),
                 )
                 .await?;
+
+            // For MANUAL data source: update quote mode on existing assets and create a price quote
+            if let Some(ref mode) = quote_mode_hint {
+                let requested_mode = mode.to_uppercase();
+                let current_mode = asset.quote_mode.as_db_str();
+                if requested_mode != current_mode {
+                    self.asset_service
+                        .update_quote_mode_silent(&asset.id, &requested_mode)
+                        .await?;
+                }
+
+                if requested_mode == "MANUAL" && !holding.average_cost.is_zero() {
+                    self.create_manual_quote(
+                        &asset.id,
+                        holding.average_cost,
+                        &holding.currency,
+                        request.snapshot_date,
+                    )
+                    .await;
+                }
+            }
 
             asset_ids.push(asset.id.clone());
 
@@ -191,5 +236,49 @@ impl ManualSnapshotService {
         asset_ids.dedup();
 
         Ok(asset_ids)
+    }
+
+    /// Creates a manual quote for a custom asset, matching the activity creation flow.
+    async fn create_manual_quote(
+        &self,
+        asset_id: &str,
+        price: Decimal,
+        currency: &str,
+        date: NaiveDate,
+    ) {
+        let timestamp = Utc.from_utc_datetime(&date.and_hms_opt(12, 0, 0).unwrap());
+        let date_part = timestamp.format("%Y%m%d").to_string();
+        let quote_id = format!("{}_{}", date_part, asset_id.to_uppercase());
+
+        let quote = Quote {
+            id: quote_id,
+            asset_id: asset_id.to_string(),
+            timestamp,
+            open: price,
+            high: price,
+            low: price,
+            close: price,
+            adjclose: price,
+            volume: Decimal::ZERO,
+            currency: currency.to_string(),
+            data_source: DataSource::Manual,
+            created_at: Utc::now(),
+            notes: None,
+        };
+
+        match self.quote_service.update_quote(quote).await {
+            Ok(_) => {
+                debug!(
+                    "Created manual quote for asset {} on {} at price {}",
+                    asset_id, date, price
+                );
+            }
+            Err(e) => {
+                debug!(
+                    "Failed to create manual quote for asset {}: {}",
+                    asset_id, e
+                );
+            }
+        }
     }
 }

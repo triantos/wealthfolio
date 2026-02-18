@@ -1,4 +1,8 @@
+use chrono::{DateTime, Utc};
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, RwLock};
+use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 use wealthfolio_ai::{AiProviderServiceTrait, ChatService};
 use wealthfolio_connect::BrokerSyncServiceTrait;
 use wealthfolio_core::{
@@ -8,10 +12,37 @@ use wealthfolio_core::{
     fx, goals, health, limits, portfolio, quotes, settings, taxonomies,
 };
 use wealthfolio_device_sync::DeviceEnrollService;
-use wealthfolio_storage_sqlite::portfolio::snapshot::SnapshotRepository;
+use wealthfolio_storage_sqlite::{
+    portfolio::snapshot::SnapshotRepository, sync::AppSyncRepository,
+};
 
 use super::TauriAiEnvironment;
 use crate::services::ConnectService;
+
+#[derive(Debug, Default)]
+pub struct SnapshotPolicyState {
+    pub last_uploaded_at: Option<DateTime<Utc>>,
+    pub last_uploaded_cursor: i64,
+}
+
+#[derive(Debug)]
+pub struct DeviceSyncRuntimeState {
+    pub cycle_mutex: Mutex<()>,
+    pub background_task: Mutex<Option<JoinHandle<()>>>,
+    pub snapshot_policy: Mutex<SnapshotPolicyState>,
+    pub snapshot_upload_cancelled: AtomicBool,
+}
+
+impl DeviceSyncRuntimeState {
+    pub fn new() -> Self {
+        Self {
+            cycle_mutex: Mutex::new(()),
+            background_task: Mutex::new(None),
+            snapshot_policy: Mutex::new(SnapshotPolicyState::default()),
+            snapshot_upload_cancelled: AtomicBool::new(false),
+        }
+    }
+}
 
 pub struct ServiceContext {
     pub base_currency: Arc<RwLock<String>>,
@@ -38,6 +69,7 @@ pub struct ServiceContext {
     pub income_service: Arc<dyn portfolio::income::IncomeServiceTrait>,
     pub snapshot_service: Arc<dyn portfolio::snapshot::SnapshotServiceTrait>,
     pub snapshot_repository: Arc<SnapshotRepository>,
+    pub app_sync_repository: Arc<AppSyncRepository>,
     pub holdings_service: Arc<dyn portfolio::holdings::HoldingsServiceTrait>,
     pub allocation_service: Arc<dyn portfolio::allocation::AllocationServiceTrait>,
     pub valuation_service: Arc<dyn portfolio::valuation::ValuationServiceTrait>,
@@ -49,6 +81,7 @@ pub struct ServiceContext {
     pub ai_provider_service: Arc<dyn AiProviderServiceTrait>,
     pub ai_chat_service: Arc<ChatService<TauriAiEnvironment>>,
     pub device_enroll_service: Arc<DeviceEnrollService>,
+    pub device_sync_runtime: Arc<DeviceSyncRuntimeState>,
     pub health_service: Arc<health::HealthService>,
 }
 
@@ -113,6 +146,10 @@ impl ServiceContext {
         Arc::clone(&self.holdings_service)
     }
 
+    pub fn app_sync_repository(&self) -> Arc<AppSyncRepository> {
+        Arc::clone(&self.app_sync_repository)
+    }
+
     pub fn allocation_service(&self) -> Arc<dyn portfolio::allocation::AllocationServiceTrait> {
         Arc::clone(&self.allocation_service)
     }
@@ -151,6 +188,10 @@ impl ServiceContext {
 
     pub fn device_enroll_service(&self) -> Arc<DeviceEnrollService> {
         Arc::clone(&self.device_enroll_service)
+    }
+
+    pub fn device_sync_runtime(&self) -> Arc<DeviceSyncRuntimeState> {
+        Arc::clone(&self.device_sync_runtime)
     }
 
     pub fn health_service(&self) -> Arc<health::HealthService> {

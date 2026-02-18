@@ -935,9 +935,9 @@ impl MarketDataProvider for AlphaVantageProvider {
 
     fn rate_limit(&self) -> RateLimit {
         RateLimit {
-            requests_per_minute: 5,             // Free tier is very limited
-            max_concurrency: 1,                 // Sequential requests only
-            min_delay: Duration::from_secs(12), // ~5 requests per minute
+            requests_per_minute: 25,           // Free tier: 25 requests/day
+            max_concurrency: 1,                // Sequential requests only
+            min_delay: Duration::from_secs(3), // ~25 requests per minute
         }
     }
 
@@ -1172,9 +1172,9 @@ mod tests {
     fn test_rate_limit() {
         let provider = AlphaVantageProvider::new("test_key".to_string());
         let limit = provider.rate_limit();
-        assert_eq!(limit.requests_per_minute, 5);
+        assert_eq!(limit.requests_per_minute, 25);
         assert_eq!(limit.max_concurrency, 1);
-        assert_eq!(limit.min_delay, Duration::from_secs(12));
+        assert_eq!(limit.min_delay, Duration::from_secs(3));
     }
 
     #[test]

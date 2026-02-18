@@ -7,7 +7,7 @@ members = [
 ]
 
 [workspace.package]
-version = "3.0.0-beta.4"
+version = "3.0.0-beta.5"
 edition = "2021"
 license = "AGPL-3.0"
 
@@ -42,7 +42,7 @@ thiserror = "1"
 anyhow = "1"
 
 # IDs
-uuid = { version = "1", features = ["v4", "serde"] }
+uuid = { version = "1", features = ["v4", "v7", "serde"] }
 
 # Numbers
 rust_decimal = { version = "1.39", features = ["maths", "serde-float"] }

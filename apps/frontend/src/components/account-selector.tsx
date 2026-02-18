@@ -39,6 +39,8 @@ interface AccountSelectorProps {
   includePortfolio?: boolean;
   className?: string;
   iconOnly?: boolean;
+  /** Custom icon to use when iconOnly is true (overrides the default account type icon) */
+  icon?: Icon;
   /** Filter accounts by tracking mode(s). If provided, only accounts with matching tracking mode are shown. */
   trackingModes?: TrackingMode[];
 }
@@ -116,6 +118,7 @@ export const AccountSelector = forwardRef<HTMLButtonElement, AccountSelectorProp
       includePortfolio = false,
       className,
       iconOnly = false,
+      icon: CustomIcon,
       trackingModes,
     },
     ref,
@@ -301,27 +304,42 @@ export const AccountSelector = forwardRef<HTMLButtonElement, AccountSelectorProp
               variant="outline"
               role="combobox"
               aria-expanded={open}
-              size="sm"
+              aria-label={iconOnly ? "Select account" : undefined}
+              size={iconOnly ? "icon" : "sm"}
               className={cn(
-                "bg-secondary/30 hover:bg-muted/80 flex h-10 items-center gap-1.5 rounded-full border-[1.5px] border-none px-3 py-1 text-sm font-medium",
+                "bg-secondary/30 hover:bg-muted/80 flex items-center rounded-full border-none",
+                iconOnly ? "h-9 w-9 p-0" : "h-10 gap-1.5 px-3 py-1 text-sm font-medium",
                 className,
               )}
             >
-              <div className="flex items-center gap-2">
-                {selectedAccount ? (
-                  <>
-                    {(() => {
-                      const IconComponent =
-                        accountTypeIcons[selectedAccount.accountType] ?? Icons.CreditCard;
-                      return <IconComponent className="h-4 w-4 shrink-0 opacity-70" />;
-                    })()}
-                    <span>{selectedAccount.name}</span>
-                  </>
-                ) : (
-                  <span className="text-muted-foreground">Select an account</span>
-                )}
-              </div>
-              <Icons.ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              {iconOnly ? (
+                (() => {
+                  const IconComponent = CustomIcon
+                    ? CustomIcon
+                    : selectedAccount
+                      ? (accountTypeIcons[selectedAccount.accountType] ?? Icons.CreditCard)
+                      : Icons.Wallet;
+                  return <IconComponent className="h-4 w-4 shrink-0" />;
+                })()
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    {selectedAccount ? (
+                      <>
+                        {(() => {
+                          const IconComponent =
+                            accountTypeIcons[selectedAccount.accountType] ?? Icons.CreditCard;
+                          return <IconComponent className="h-4 w-4 shrink-0 opacity-70" />;
+                        })()}
+                        <span>{selectedAccount.name}</span>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground">Select an account</span>
+                    )}
+                  </div>
+                  <Icons.ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </>
+              )}
             </Button>
           );
 

@@ -9,7 +9,9 @@ use crate::db::{get_connection, WriteHandle};
 use crate::errors::StorageError;
 use crate::schema::platforms;
 use crate::schema::platforms::dsl::*;
+use crate::sync::{write_outbox_event, OutboxWriteRequest};
 use wealthfolio_core::errors::Result;
+use wealthfolio_core::sync::{SyncEntity, SyncOperation};
 
 use super::model::{Platform, PlatformDB};
 
@@ -87,6 +89,16 @@ impl PlatformRepository {
                     .execute(conn)
                     .map_err(StorageError::from)?;
 
+                write_outbox_event(
+                    conn,
+                    OutboxWriteRequest::new(
+                        SyncEntity::Platform,
+                        platform_db.id.clone(),
+                        SyncOperation::Update,
+                        serde_json::to_value(&platform_db)?,
+                    ),
+                )?;
+
                 // Return the platform
                 Ok(Platform::from(platform_db))
             })
@@ -98,9 +110,20 @@ impl PlatformRepository {
         let id_to_delete = platform_id.to_string();
         self.writer
             .exec(move |conn| {
-                let affected = diesel::delete(platforms.find(id_to_delete))
+                let affected = diesel::delete(platforms.find(&id_to_delete))
                     .execute(conn)
                     .map_err(StorageError::from)?;
+                if affected > 0 {
+                    write_outbox_event(
+                        conn,
+                        OutboxWriteRequest::new(
+                            SyncEntity::Platform,
+                            id_to_delete.clone(),
+                            SyncOperation::Delete,
+                            serde_json::json!({ "id": id_to_delete }),
+                        ),
+                    )?;
+                }
                 Ok(affected)
             })
             .await

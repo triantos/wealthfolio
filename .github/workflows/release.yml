@@ -81,10 +81,11 @@ jobs:
         uses: tauri-apps/tauri-action@v0
 
         env:
-          # Wealthfolio Connect configuration (disabled for beta)
-          # CONNECT_AUTH_URL: https://liyiikzhilvnivjgidpw.supabase.co
-          # CONNECT_AUTH_PUBLISHABLE_KEY: sb_publishable_ZSZbXNtWtnh9i2nqJ2UL4A_NV8ZVutd
-          # CONNECT_API_URL: https://api.wealthfolio.app
+          # Wealthfolio Connect (set variables to enable; omit to build without Connect)
+          CONNECT_AUTH_URL: ${{ vars.CONNECT_AUTH_URL }}
+          CONNECT_AUTH_PUBLISHABLE_KEY: ${{ vars.CONNECT_AUTH_PUBLISHABLE_KEY }}
+          CONNECT_API_URL: ${{ vars.CONNECT_API_URL }}
+          CONNECT_OAUTH_CALLBACK_URL: ${{ vars.CONNECT_OAUTH_CALLBACK_URL }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}

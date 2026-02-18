@@ -673,6 +673,7 @@ mod tests {
             exchange_mic: Some("XLON".to_string()),
             quote_ccy: Some("GBp".to_string()),
             instrument_type: Some("EQUITY".to_string()),
+            quote_mode: None,
             errors: None,
             warnings: None,
             duplicate_of_id: None,

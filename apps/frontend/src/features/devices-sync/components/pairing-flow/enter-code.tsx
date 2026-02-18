@@ -2,12 +2,12 @@
 // Input form for the claimer to enter the pairing code
 // =====================================================
 
-import { useState } from "react";
-import { Input } from "@wealthfolio/ui/components/ui/input";
-import { Button } from "@wealthfolio/ui/components/ui/button";
-import { Icons } from "@wealthfolio/ui";
-import { usePlatform } from "@/hooks/use-platform";
 import { logger } from "@/adapters";
+import { usePlatform } from "@/hooks/use-platform";
+import { Icons } from "@wealthfolio/ui";
+import { Button } from "@wealthfolio/ui/components/ui/button";
+import { Input } from "@wealthfolio/ui/components/ui/input";
+import { useEffect, useRef, useState } from "react";
 
 interface EnterCodeProps {
   onSubmit: (code: string) => void;
@@ -20,6 +20,13 @@ export function EnterCode({ onSubmit, onCancel, isLoading, error }: EnterCodePro
   const [code, setCode] = useState("");
   const [isScanning, setIsScanning] = useState(false);
   const { isMobile } = usePlatform();
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   // Scan only available on mobile (native iOS/Android)
   const canScan = isMobile;
@@ -65,6 +72,28 @@ export function EnterCode({ onSubmit, onCancel, isLoading, error }: EnterCodePro
 
     try {
       const scanner = await import("@tauri-apps/plugin-barcode-scanner");
+
+      const currentPermission =
+        typeof scanner.checkPermissions === "function"
+          ? await scanner.checkPermissions()
+          : "denied";
+
+      if (currentPermission !== "granted") {
+        logger.info("[Scan] Camera permission not granted, requesting...");
+        const requestedPermission =
+          typeof scanner.requestPermissions === "function"
+            ? await scanner.requestPermissions()
+            : "denied";
+
+        if (requestedPermission !== "granted") {
+          logger.info("[Scan] Camera permission denied by user");
+          return;
+        }
+
+        // iOS may need a short delay after first-time permission grant
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+
       const result = await scanner.scan({
         windowed: false,
         formats: [scanner.Format.QRCode],
@@ -86,12 +115,16 @@ export function EnterCode({ onSubmit, onCancel, isLoading, error }: EnterCodePro
       }
     }
 
+    // Guard against unmount during permission dialog / camera view
+    if (!mountedRef.current) return;
+
     setIsScanning(false);
 
     if (scannedContent) {
       const normalized = normalizeCode(scannedContent);
       if (normalized.length === 6) {
         setTimeout(() => {
+          if (!mountedRef.current) return;
           setCode(normalized);
           onSubmit(normalized);
         }, 100);

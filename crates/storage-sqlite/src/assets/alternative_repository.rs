@@ -19,6 +19,8 @@ use wealthfolio_core::{Error, Result};
 use crate::db::{get_connection, WriteHandle};
 use crate::errors::StorageError;
 use crate::schema::{assets, quotes};
+use crate::sync::{write_outbox_event, OutboxWriteRequest};
+use wealthfolio_core::sync::{SyncEntity, SyncOperation};
 
 /// Repository for managing alternative asset data in the database.
 ///
@@ -78,6 +80,21 @@ impl AlternativeAssetRepositoryTrait for AlternativeAssetRepository {
                                 .set(assets::metadata.eq(updated_metadata))
                                 .execute(conn)
                                 .map_err(StorageError::from)?;
+
+                            let liability_row = assets::table
+                                .filter(assets::id.eq(&liability_id))
+                                .first::<crate::assets::AssetDB>(conn)
+                                .map_err(StorageError::from)?;
+
+                            write_outbox_event(
+                                conn,
+                                OutboxWriteRequest::new(
+                                    SyncEntity::Asset,
+                                    liability_id.clone(),
+                                    SyncOperation::Update,
+                                    serde_json::to_value(&liability_row)?,
+                                ),
+                            )?;
                         }
                     }
                 }
@@ -103,6 +120,16 @@ impl AlternativeAssetRepositoryTrait for AlternativeAssetRepository {
                         asset_id_owned
                     ))));
                 }
+
+                write_outbox_event(
+                    conn,
+                    OutboxWriteRequest::new(
+                        SyncEntity::Asset,
+                        asset_id_owned.clone(),
+                        SyncOperation::Delete,
+                        serde_json::json!({ "id": asset_id_owned }),
+                    ),
+                )?;
 
                 Ok(())
             })
@@ -188,6 +215,20 @@ impl AlternativeAssetRepositoryTrait for AlternativeAssetRepository {
                         asset_id_owned
                     ))));
                 }
+
+                let updated_row = assets::table
+                    .filter(assets::id.eq(&asset_id_owned))
+                    .first::<crate::assets::AssetDB>(conn)
+                    .map_err(StorageError::from)?;
+                write_outbox_event(
+                    conn,
+                    OutboxWriteRequest::new(
+                        SyncEntity::Asset,
+                        asset_id_owned,
+                        SyncOperation::Update,
+                        serde_json::to_value(&updated_row)?,
+                    ),
+                )?;
 
                 Ok(())
             })

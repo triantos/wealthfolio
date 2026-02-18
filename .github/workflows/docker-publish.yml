@@ -70,5 +70,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            CONNECT_AUTH_URL=https://liyiikzhilvnivjgidpw.supabase.co
-            CONNECT_AUTH_PUBLISHABLE_KEY=sb_publishable_ZSZbXNtWtnh9i2nqJ2UL4A_NV8ZVutd
+            CONNECT_AUTH_URL=${{ vars.CONNECT_AUTH_URL }}
+            CONNECT_AUTH_PUBLISHABLE_KEY=${{ vars.CONNECT_AUTH_PUBLISHABLE_KEY }}
+            CONNECT_API_URL=${{ vars.CONNECT_API_URL }}

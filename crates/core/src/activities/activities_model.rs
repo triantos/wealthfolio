@@ -584,6 +584,8 @@ pub struct ActivityImport {
     pub quote_ccy: Option<String>,
     /// Optional resolved instrument type hint (e.g., "EQUITY", "CRYPTO")
     pub instrument_type: Option<String>,
+    /// Optional quote mode hint (e.g., "MANUAL", "MARKET")
+    pub quote_mode: Option<String>,
     pub errors: Option<std::collections::HashMap<String, Vec<String>>>,
     pub warnings: Option<std::collections::HashMap<String, Vec<String>>>,
     #[serde(default)]
@@ -1095,7 +1097,7 @@ impl From<ActivityImport> for NewActivity {
                 exchange_mic: import.exchange_mic,
                 kind: None,
                 name: import.symbol_name,
-                quote_mode: None,
+                quote_mode: import.quote_mode.clone(),
                 quote_ccy: import.quote_ccy,
                 instrument_type: import.instrument_type,
             })

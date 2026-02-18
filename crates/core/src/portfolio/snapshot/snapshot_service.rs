@@ -1565,13 +1565,15 @@ impl SnapshotServiceTrait for SnapshotService {
             snapshot.snapshot_date.format("%Y-%m-%d")
         );
 
-        // Check if content is unchanged from latest snapshot (skip if identical)
-        let latest = self.snapshot_repository.get_latest_snapshot_before_date(
+        // Check if content is unchanged from existing snapshot on the same date (skip if identical)
+        // Only compare against the same date to avoid false matches with SYNTHETIC backfill snapshots
+        let same_date_snapshots = self.snapshot_repository.get_snapshots_by_account(
             account_id,
-            snapshot.snapshot_date + chrono::Days::new(1),
+            Some(snapshot.snapshot_date),
+            Some(snapshot.snapshot_date),
         )?;
 
-        if let Some(existing) = latest {
+        if let Some(existing) = same_date_snapshots.into_iter().next() {
             if existing.is_content_equal(&snapshot) {
                 debug!(
                     "Snapshot content unchanged for account {} on {}, skipping save",

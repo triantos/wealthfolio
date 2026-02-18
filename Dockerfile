@@ -6,8 +6,9 @@ ARG RUST_IMAGE=rust:1.91-alpine
 FROM --platform=$BUILDPLATFORM node:20-alpine AS frontend
 
 # Wealthfolio Connect configuration (baked into JS bundle at build time)
-ARG CONNECT_AUTH_URL=https://liyiikzhilvnivjgxxx.supabase.co
-ARG CONNECT_AUTH_PUBLISHABLE_KEY=sb_publishable_ZSZbXNtWtnh9i2nqJ2UL4A_NV8ZVxxx
+# Pass via --build-arg to enable; omit to build without Connect.
+ARG CONNECT_AUTH_URL=
+ARG CONNECT_AUTH_PUBLISHABLE_KEY=
 ENV CONNECT_AUTH_URL=${CONNECT_AUTH_URL}
 ENV CONNECT_AUTH_PUBLISHABLE_KEY=${CONNECT_AUTH_PUBLISHABLE_KEY}
 
@@ -69,8 +70,9 @@ WORKDIR /app
 COPY --from=backend /wealthfolio-server /usr/local/bin/wealthfolio-server
 COPY --from=frontend /web-dist ./dist
 ENV WF_DB_PATH=/data/wealthfolio.db
-# Wealthfolio Connect API URL (can be overridden at runtime)
-ENV CONNECT_API_URL=https://api.wealthfolio.app
+# Wealthfolio Connect API URL (can be overridden at runtime via -e or docker-compose)
+ARG CONNECT_API_URL=
+ENV CONNECT_API_URL=${CONNECT_API_URL}
 VOLUME ["/data"]
 EXPOSE 8080
 CMD ["/usr/local/bin/wealthfolio-server"]

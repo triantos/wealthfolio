@@ -559,10 +559,19 @@ body.qr-scan-active .scan-hide-target {
     -webkit-overflow-scrolling: touch;
   }
 
-  /* When the scroll container handles mobile bottom inset (nav height),
-     remove bottom padding from PageContent to avoid double spacing */
-  [data-page-scroll-container][data-with-mobile-nav-offset="true"] main[data-ptr-content] {
+  /* Keep last content visible above the floating mobile nav.
+     Put clearance on the last content block so it inherits route/page visuals
+     instead of creating a plain painted strip under the nav. */
+  [data-page-scroll-container][data-with-mobile-nav-offset="true"] [data-page-content="true"] {
     padding-bottom: 0 !important;
+  }
+
+  [data-page-scroll-container][data-with-mobile-nav-offset="true"]
+    [data-page-content="true"]
+    > :last-child {
+    padding-bottom: calc(
+      var(--mobile-nav-ui-height) + max(var(--mobile-nav-gap), env(safe-area-inset-bottom))
+    ) !important;
   }
 
   .touch-manipulation {

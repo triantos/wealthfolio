@@ -23,10 +23,10 @@ use wealthfolio_core::{
 use crate::{error::ApiResult, main_lib::AppState};
 
 use super::dto::{
-    AllocationHoldingsQuery, CheckHoldingsImportRequest, CheckHoldingsImportResult,
-    DeleteSnapshotQuery, HistoryQuery, HoldingItemQuery, HoldingsQuery, HoldingsSnapshotInput,
-    ImportHoldingsCsvRequest, ImportHoldingsCsvResult, SaveManualHoldingsRequest,
-    SnapshotDateQuery, SnapshotInfo, SnapshotsQuery, SymbolCheckResult,
+    AllocationHoldingsQuery, AssetHoldingsQuery, CheckHoldingsImportRequest,
+    CheckHoldingsImportResult, DeleteSnapshotQuery, HistoryQuery, HoldingItemQuery, HoldingsQuery,
+    HoldingsSnapshotInput, ImportHoldingsCsvRequest, ImportHoldingsCsvResult,
+    SaveManualHoldingsRequest, SnapshotDateQuery, SnapshotInfo, SnapshotsQuery, SymbolCheckResult,
 };
 use super::mappers::{parse_date, parse_date_optional, snapshot_source_to_string};
 
@@ -52,6 +52,26 @@ pub async fn get_holding(
         .get_holding(&q.account_id, &q.asset_id, &base)
         .await?;
     Ok(Json(holding))
+}
+
+pub async fn get_asset_holdings(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<AssetHoldingsQuery>,
+) -> ApiResult<Json<Vec<Holding>>> {
+    let base = state.base_currency.read().unwrap().clone();
+    let accounts = state.account_service.get_active_accounts()?;
+
+    let mut result = Vec::new();
+    for account in accounts {
+        if let Ok(Some(holding)) = state
+            .holdings_service
+            .get_holding(&account.id, &q.asset_id, &base)
+            .await
+        {
+            result.push(holding);
+        }
+    }
+    Ok(Json(result))
 }
 
 pub async fn get_historical_valuations(
@@ -335,6 +355,9 @@ pub async fn save_manual_holdings_handler(
             quantity,
             currency: holding.currency,
             average_cost,
+            name: holding.name,
+            data_source: holding.data_source,
+            asset_kind: holding.asset_kind,
         });
     }
 
@@ -351,6 +374,7 @@ pub async fn save_manual_holdings_handler(
         state.asset_service.clone(),
         state.fx_service.clone(),
         state.snapshot_service.clone(),
+        state.quote_service.clone(),
     )
     .with_event_sink(state.domain_event_sink.clone());
 
@@ -583,6 +607,9 @@ async fn import_single_snapshot_impl(
             quantity,
             currency: pos_input.currency.clone(),
             average_cost,
+            name: None,
+            data_source: None,
+            asset_kind: None,
         });
     }
 
@@ -601,6 +628,7 @@ async fn import_single_snapshot_impl(
         state.asset_service.clone(),
         state.fx_service.clone(),
         state.snapshot_service.clone(),
+        state.quote_service.clone(),
     )
     .with_event_sink(state.domain_event_sink.clone());
 

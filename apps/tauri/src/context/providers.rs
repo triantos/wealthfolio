@@ -1,12 +1,12 @@
 use super::ai_environment::TauriAiEnvironment;
-use super::registry::ServiceContext;
+use super::registry::{DeviceSyncRuntimeState, ServiceContext};
 use crate::domain_events::TauriDomainEventSink;
 use crate::secret_store::shared_secret_store;
 use crate::services::ConnectService;
 use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc;
 use wealthfolio_ai::{AiProviderService, ChatConfig, ChatService};
-use wealthfolio_connect::{BrokerSyncService, PlatformRepository, DEFAULT_CLOUD_API_URL};
+use wealthfolio_connect::{BrokerSyncService, PlatformRepository};
 use wealthfolio_core::{
     accounts::AccountService,
     activities::ActivityService,
@@ -43,7 +43,7 @@ use wealthfolio_storage_sqlite::{
     market_data::{MarketDataRepository, QuoteSyncStateRepository},
     portfolio::{snapshot::SnapshotRepository, valuation::ValuationRepository},
     settings::SettingsRepository,
-    sync::ImportRunRepository,
+    sync::{AppSyncRepository, ImportRunRepository},
     taxonomies::TaxonomyRepository,
 };
 
@@ -75,6 +75,7 @@ pub async fn initialize_context(
     ));
     let fx_repository = Arc::new(FxRepository::new(pool.clone(), writer.clone()));
     let snapshot_repository = Arc::new(SnapshotRepository::new(pool.clone(), writer.clone()));
+    let app_sync_repository = Arc::new(AppSyncRepository::new(pool.clone(), writer.clone()));
     let valuation_repository = Arc::new(ValuationRepository::new(pool.clone(), writer.clone()));
     let platform_repository = Arc::new(PlatformRepository::new(pool.clone(), writer.clone()));
 
@@ -283,7 +284,7 @@ pub async fn initialize_context(
         .ok()
         .map(|v| v.trim().trim_end_matches('/').to_string())
         .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| DEFAULT_CLOUD_API_URL.to_string());
+        .unwrap_or_default();
     let device_display_name = get_device_display_name();
     let app_version = Some(env!("CARGO_PKG_VERSION").to_string());
     let device_enroll_service = Arc::new(DeviceEnrollService::new(
@@ -292,6 +293,7 @@ pub async fn initialize_context(
         device_display_name,
         app_version,
     ));
+    let device_sync_runtime = Arc::new(DeviceSyncRuntimeState::new());
 
     // Health service for portfolio health diagnostics
     let health_dismissal_repository =
@@ -315,6 +317,7 @@ pub async fn initialize_context(
             income_service,
             snapshot_service,
             snapshot_repository,
+            app_sync_repository,
             holdings_service,
             allocation_service,
             valuation_service,
@@ -326,6 +329,7 @@ pub async fn initialize_context(
             ai_provider_service,
             ai_chat_service,
             device_enroll_service,
+            device_sync_runtime,
             health_service,
         },
         event_receiver,

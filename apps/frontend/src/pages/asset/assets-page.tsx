@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 
+import { Separator } from "@wealthfolio/ui";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -10,8 +11,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@wealthfolio/ui/components/ui/alert-dialog";
-import { Separator } from "@wealthfolio/ui";
+import { RefreshQuotesConfirmDialog } from "./refresh-quotes-confirm-dialog";
 
+import { useIsMobileViewport } from "@/hooks/use-platform";
 import { useSyncMarketDataMutation } from "@/hooks/use-sync-market-data";
 import { SettingsHeader } from "../settings/settings-header";
 import { AssetEditSheet } from "./asset-edit-sheet";
@@ -21,13 +23,11 @@ import { AssetsTableMobile } from "./assets-table-mobile";
 import { useAssetManagement } from "./hooks/use-asset-management";
 import { useAssets } from "./hooks/use-assets";
 import { useLatestQuotes } from "./hooks/use-latest-quotes";
-import { useIsMobileViewport } from "@/hooks/use-platform";
 
 export default function AssetsPage() {
   const { assets, isLoading } = useAssets();
   const { deleteAssetMutation } = useAssetManagement();
-  const refetchRecentDays = 45;
-  const refetchQuotesMutation = useSyncMarketDataMutation(false, refetchRecentDays);
+  const refetchQuotesMutation = useSyncMarketDataMutation(true);
   const updateQuotesMutation = useSyncMarketDataMutation(false);
   const isMobileViewport = useIsMobileViewport();
 
@@ -37,6 +37,7 @@ export default function AssetsPage() {
 
   const [editingAsset, setEditingAsset] = useState<ParsedAsset | null>(null);
   const [assetPendingDelete, setAssetPendingDelete] = useState<ParsedAsset | null>(null);
+  const [assetPendingRefetch, setAssetPendingRefetch] = useState<ParsedAsset | null>(null);
 
   const handleDelete = async () => {
     if (!assetPendingDelete) return;
@@ -60,7 +61,7 @@ export default function AssetsPage() {
             onEdit={(asset) => setEditingAsset(asset)}
             onDelete={(asset) => setAssetPendingDelete(asset)}
             onUpdateQuotes={(asset) => updateQuotesMutation.mutate([asset.id])}
-            onRefetchQuotes={(asset) => refetchQuotesMutation.mutate([asset.id])}
+            onRefetchQuotes={(asset) => setAssetPendingRefetch(asset)}
             isUpdatingQuotes={updateQuotesMutation.isPending}
             isRefetchingQuotes={refetchQuotesMutation.isPending}
           />
@@ -72,7 +73,7 @@ export default function AssetsPage() {
             onEdit={(asset) => setEditingAsset(asset)}
             onDelete={(asset) => setAssetPendingDelete(asset)}
             onUpdateQuotes={(asset) => updateQuotesMutation.mutate([asset.id])}
-            onRefetchQuotes={(asset) => refetchQuotesMutation.mutate([asset.id])}
+            onRefetchQuotes={(asset) => setAssetPendingRefetch(asset)}
             isUpdatingQuotes={updateQuotesMutation.isPending}
             isRefetchingQuotes={refetchQuotesMutation.isPending}
           />
@@ -119,6 +120,20 @@ export default function AssetsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <RefreshQuotesConfirmDialog
+        open={!!assetPendingRefetch}
+        onOpenChange={(open) => {
+          if (!open) setAssetPendingRefetch(null);
+        }}
+        onConfirm={() => {
+          if (assetPendingRefetch) {
+            refetchQuotesMutation.mutate([assetPendingRefetch.id]);
+          }
+          setAssetPendingRefetch(null);
+        }}
+        assetName={assetPendingRefetch?.displayCode ?? assetPendingRefetch?.name ?? undefined}
+      />
     </div>
   );
 }

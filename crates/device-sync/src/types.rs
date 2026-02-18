@@ -3,6 +3,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+// Re-export the canonical SyncEntity from core to avoid duplication.
+pub use wealthfolio_core::sync::SyncEntity;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Common Response Types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -474,4 +477,190 @@ pub struct ConfirmPairingResponse {
     /// E2EE key version the device is now trusted at
     #[serde(alias = "key_version")]
     pub key_version: i32,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sync Events + Snapshots
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Event payload pushed to the remote oplog.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncPushEventRequest {
+    pub event_id: String,
+    pub device_id: String,
+    #[serde(rename = "type")]
+    pub event_type: String,
+    pub entity: SyncEntity,
+    pub entity_id: String,
+    pub client_timestamp: String,
+    pub payload: String,
+    pub payload_key_version: i32,
+}
+
+/// Push batch request.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncPushRequest {
+    pub events: Vec<SyncPushEventRequest>,
+}
+
+/// Event accepted/duplicate item returned by push API.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncPushResultItem {
+    #[serde(alias = "eventId")]
+    pub event_id: String,
+    pub seq: i64,
+}
+
+/// Push batch response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncPushResponse {
+    pub accepted: Vec<SyncPushResultItem>,
+    pub duplicate: Vec<SyncPushResultItem>,
+    #[serde(alias = "serverCursor")]
+    pub server_cursor: i64,
+}
+
+/// Event item returned by pull API.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncEvent {
+    #[serde(alias = "eventId")]
+    pub event_id: String,
+    #[serde(alias = "deviceId")]
+    pub device_id: String,
+    #[serde(rename = "type")]
+    pub event_type: String,
+    pub entity: SyncEntity,
+    #[serde(alias = "entityId")]
+    pub entity_id: String,
+    #[serde(alias = "clientTimestamp")]
+    pub client_timestamp: String,
+    pub payload: String,
+    #[serde(alias = "payloadKeyVersion")]
+    pub payload_key_version: i32,
+    pub seq: i64,
+    #[serde(alias = "userId")]
+    pub user_id: String,
+    #[serde(alias = "teamId")]
+    pub team_id: String,
+    #[serde(alias = "serverTimestamp")]
+    pub server_timestamp: String,
+}
+
+/// Pull response with pagination and GC/snapshot hints.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncPullResponse {
+    pub from: i64,
+    pub to: i64,
+    #[serde(alias = "nextCursor")]
+    pub next_cursor: i64,
+    #[serde(alias = "hasMore")]
+    pub has_more: bool,
+    pub events: Vec<SyncEvent>,
+    #[serde(default)]
+    pub gc_watermark: Option<i64>,
+    #[serde(default)]
+    #[serde(alias = "latestSnapshotSeq")]
+    pub latest_snapshot_seq: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncLatestSnapshotRef {
+    #[serde(alias = "snapshotId")]
+    pub snapshot_id: String,
+    #[serde(alias = "schemaVersion")]
+    pub schema_version: i32,
+    #[serde(alias = "oplogSeq")]
+    pub oplog_seq: i64,
+}
+
+/// Lightweight current cursor response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncCursorResponse {
+    pub cursor: i64,
+    #[serde(default)]
+    #[serde(alias = "gcWatermark")]
+    pub gc_watermark: Option<i64>,
+    #[serde(default)]
+    #[serde(alias = "latestSnapshot")]
+    pub latest_snapshot: Option<SyncLatestSnapshotRef>,
+}
+
+/// Snapshot metadata for bootstrap download.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SnapshotLatestResponse {
+    #[serde(alias = "snapshotId")]
+    pub snapshot_id: String,
+    #[serde(alias = "schemaVersion")]
+    pub schema_version: i32,
+    #[serde(alias = "coversTables")]
+    pub covers_tables: Vec<String>,
+    #[serde(alias = "oplogSeq")]
+    pub oplog_seq: i64,
+    #[serde(alias = "sizeBytes")]
+    pub size_bytes: i64,
+    pub checksum: String,
+    #[serde(alias = "createdAt")]
+    pub created_at: String,
+}
+
+/// Headers returned with snapshot download blob.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SnapshotDownloadHeaders {
+    pub schema_version: i32,
+    pub covers_tables: Vec<String>,
+    pub checksum: String,
+}
+
+/// Body for requesting on-demand snapshot generation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SnapshotRequestPayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(alias = "minSchemaVersion")]
+    pub min_schema_version: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(alias = "coversTables")]
+    pub covers_tables: Option<Vec<String>>,
+    pub payload: String,
+    #[serde(alias = "payloadKeyVersion")]
+    pub payload_key_version: i32,
+}
+
+/// Response from snapshot request endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SnapshotRequestResponse {
+    #[serde(alias = "requestId")]
+    pub request_id: String,
+    pub status: String,
+    pub message: String,
+}
+
+/// Header metadata required for snapshot upload.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SnapshotUploadHeaders {
+    #[serde(alias = "eventId")]
+    pub event_id: Option<String>,
+    #[serde(alias = "schemaVersion")]
+    pub schema_version: i32,
+    #[serde(alias = "coversTables")]
+    pub covers_tables: Vec<String>,
+    #[serde(alias = "sizeBytes")]
+    pub size_bytes: i64,
+    pub checksum: String,
+    #[serde(alias = "metadataPayload")]
+    pub metadata_payload: String,
+    #[serde(alias = "payloadKeyVersion")]
+    pub payload_key_version: i32,
+}
+
+/// Snapshot upload response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SnapshotUploadResponse {
+    #[serde(alias = "snapshotId")]
+    pub snapshot_id: String,
+    #[serde(alias = "r2Key")]
+    pub r2_key: String,
+    #[serde(alias = "oplogSeq")]
+    pub oplog_seq: i64,
+    #[serde(alias = "createdAt")]
+    pub created_at: String,
 }

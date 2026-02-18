@@ -23,10 +23,12 @@ use super::model::{ActivityDB, ActivityDetailsDB, ImportMappingDB};
 use crate::db::{get_connection, WriteHandle};
 use crate::errors::StorageError;
 use crate::schema::{accounts, activities, activity_import_profiles, assets};
+use crate::sync::{write_outbox_event, OutboxWriteRequest};
 use crate::utils::chunk_for_sqlite;
 use async_trait::async_trait;
 use diesel::dsl::{max, min};
 use num_traits::Zero;
+use wealthfolio_core::sync::{SyncEntity, SyncOperation};
 
 /// Repository for managing activity data in the database
 pub struct ActivityRepository {
@@ -284,7 +286,17 @@ impl ActivityRepositoryTrait for ActivityRepository {
                     .values(&activity_to_insert)
                     .get_result::<ActivityDB>(conn)
                     .map_err(StorageError::from)?;
-                Ok(Activity::from(inserted_activity))
+                let activity = Activity::from(inserted_activity);
+                write_outbox_event(
+                    conn,
+                    OutboxWriteRequest::new(
+                        SyncEntity::Activity,
+                        activity.id.clone(),
+                        SyncOperation::Create,
+                        serde_json::to_value(&activity_to_insert)?,
+                    ),
+                )?;
+                Ok(activity)
             })
             .await
     }
@@ -374,7 +386,17 @@ impl ActivityRepositoryTrait for ActivityRepository {
                         .set(&activity_to_update)
                         .get_result::<ActivityDB>(conn)
                         .map_err(StorageError::from)?;
-                Ok(Activity::from(updated_activity))
+                let activity = Activity::from(updated_activity);
+                write_outbox_event(
+                    conn,
+                    OutboxWriteRequest::new(
+                        SyncEntity::Activity,
+                        activity.id.clone(),
+                        SyncOperation::Update,
+                        serde_json::to_value(&activity_to_update)?,
+                    ),
+                )?;
+                Ok(activity)
             })
             .await
     }
@@ -390,6 +412,15 @@ impl ActivityRepositoryTrait for ActivityRepository {
                 diesel::delete(activities::table.filter(activities::id.eq(&activity_id)))
                     .execute(conn)
                     .map_err(StorageError::from)?;
+                write_outbox_event(
+                    conn,
+                    OutboxWriteRequest::new(
+                        SyncEntity::Activity,
+                        activity_id.clone(),
+                        SyncOperation::Delete,
+                        serde_json::json!({ "id": activity_id }),
+                    ),
+                )?;
                 Ok(activity.into())
             })
             .await
@@ -415,6 +446,15 @@ impl ActivityRepositoryTrait for ActivityRepository {
                         diesel::delete(activities::table.filter(activities::id.eq(&delete_id)))
                             .execute(conn)
                             .map_err(StorageError::from)?;
+                        write_outbox_event(
+                            conn,
+                            OutboxWriteRequest::new(
+                                SyncEntity::Activity,
+                                delete_id.clone(),
+                                SyncOperation::Delete,
+                                serde_json::json!({ "id": delete_id }),
+                            ),
+                        )?;
                         outcome.deleted.push(Activity::from(activity_db));
                     }
 
@@ -493,6 +533,15 @@ impl ActivityRepositoryTrait for ActivityRepository {
                                 .set(&activity_db)
                                 .get_result::<ActivityDB>(conn)
                                 .map_err(StorageError::from)?;
+                        write_outbox_event(
+                            conn,
+                            OutboxWriteRequest::new(
+                                SyncEntity::Activity,
+                                activity_db.id.clone(),
+                                SyncOperation::Update,
+                                serde_json::to_value(&activity_db)?,
+                            ),
+                        )?;
                         outcome.updated.push(Activity::from(updated_activity));
                     }
 
@@ -507,6 +556,15 @@ impl ActivityRepositoryTrait for ActivityRepository {
                             .values(&activity_db)
                             .get_result::<ActivityDB>(conn)
                             .map_err(StorageError::from)?;
+                        write_outbox_event(
+                            conn,
+                            OutboxWriteRequest::new(
+                                SyncEntity::Activity,
+                                generated_id.clone(),
+                                SyncOperation::Create,
+                                serde_json::to_value(&inserted_activity)?,
+                            ),
+                        )?;
                         outcome
                             .created
                             .push(Activity::from(inserted_activity.clone()));
@@ -623,6 +681,15 @@ impl ActivityRepositoryTrait for ActivityRepository {
                     .set(&mapping_db)
                     .execute(conn)
                     .map_err(StorageError::from)?;
+                write_outbox_event(
+                    conn,
+                    OutboxWriteRequest::new(
+                        SyncEntity::ActivityImportProfile,
+                        mapping_db.account_id.clone(),
+                        SyncOperation::Update,
+                        serde_json::to_value(&mapping_db)?,
+                    ),
+                )?;
                 Ok(())
             })
             .await
@@ -652,6 +719,17 @@ impl ActivityRepositoryTrait for ActivityRepository {
                     .values(&activities_db_owned)
                     .execute(conn)
                     .map_err(StorageError::from)?;
+                for activity_db in &activities_db_owned {
+                    write_outbox_event(
+                        conn,
+                        OutboxWriteRequest::new(
+                            SyncEntity::Activity,
+                            activity_db.id.clone(),
+                            SyncOperation::Create,
+                            serde_json::to_value(activity_db)?,
+                        ),
+                    )?;
+                }
                 Ok(num_inserted)
             })
             .await
@@ -1085,6 +1163,20 @@ impl ActivityRepositoryTrait for ActivityRepository {
                     {
                         Ok(count) => {
                             if count > 0 {
+                                let operation = if will_update {
+                                    SyncOperation::Update
+                                } else {
+                                    SyncOperation::Create
+                                };
+                                write_outbox_event(
+                                    conn,
+                                    OutboxWriteRequest::new(
+                                        SyncEntity::Activity,
+                                        activity_db.id.clone(),
+                                        operation,
+                                        serde_json::to_value(&activity_db)?,
+                                    ),
+                                )?;
                                 result.upserted += count;
                                 if will_update {
                                     result.updated += count;
@@ -1130,11 +1222,41 @@ impl ActivityRepositoryTrait for ActivityRepository {
         let new_id = new_asset_id.to_string();
         self.writer
             .exec(move |conn: &mut SqliteConnection| -> Result<u32> {
+                let affected_ids = activities::table
+                    .filter(activities::asset_id.eq(&old_id))
+                    .select(activities::id)
+                    .load::<String>(conn)
+                    .map_err(StorageError::from)?;
+                if affected_ids.is_empty() {
+                    return Ok(0);
+                }
+
+                let now = chrono::Utc::now().to_rfc3339();
                 let count =
                     diesel::update(activities::table.filter(activities::asset_id.eq(&old_id)))
-                        .set(activities::asset_id.eq(&new_id))
+                        .set((
+                            activities::asset_id.eq(&new_id),
+                            activities::updated_at.eq(&now),
+                        ))
                         .execute(conn)
                         .map_err(StorageError::from)?;
+
+                let updated_rows = activities::table
+                    .filter(activities::id.eq_any(&affected_ids))
+                    .select(ActivityDB::as_select())
+                    .load::<ActivityDB>(conn)
+                    .map_err(StorageError::from)?;
+                for updated_row in updated_rows {
+                    write_outbox_event(
+                        conn,
+                        OutboxWriteRequest::new(
+                            SyncEntity::Activity,
+                            updated_row.id.clone(),
+                            SyncOperation::Update,
+                            serde_json::to_value(&updated_row)?,
+                        ),
+                    )?;
+                }
                 Ok(count as u32)
             })
             .await

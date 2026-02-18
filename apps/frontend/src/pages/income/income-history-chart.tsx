@@ -1,3 +1,5 @@
+import { cn } from "@/lib/utils";
+import { formatAmount } from "@wealthfolio/ui";
 import {
   Card,
   CardContent,
@@ -14,8 +16,6 @@ import {
 } from "@wealthfolio/ui/components/ui/chart";
 import { EmptyPlaceholder } from "@wealthfolio/ui/components/ui/empty-placeholder";
 import { Icons } from "@wealthfolio/ui/components/ui/icons";
-import { cn } from "@/lib/utils";
-import { formatAmount } from "@wealthfolio/ui";
 import { format, parseISO } from "date-fns";
 import React from "react";
 import { Bar, CartesianGrid, ComposedChart, Line, XAxis, YAxis } from "recharts";
@@ -200,7 +200,7 @@ export const IncomeHistoryChart: React.FC<IncomeHistoryChartProps> = ({
                 dot={false}
               />
               <Line
-                yAxisId={isMobile ? "left" : "right"}
+                yAxisId="left"
                 type="monotone"
                 dataKey="previousIncome"
                 stroke="var(--color-previousIncome)"

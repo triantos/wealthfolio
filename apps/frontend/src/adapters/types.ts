@@ -200,6 +200,56 @@ export interface BackendEnableSyncResult {
 }
 
 /**
+ * Result from sync_engine_status command.
+ */
+export interface BackendSyncEngineStatusResult {
+  cursor: number;
+  lastPushAt: string | null;
+  lastPullAt: string | null;
+  lastError: string | null;
+  consecutiveFailures: number;
+  nextRetryAt: string | null;
+  lastCycleStatus: string | null;
+  lastCycleDurationMs: number | null;
+  backgroundRunning: boolean;
+  bootstrapRequired: boolean;
+}
+
+/**
+ * Result from sync_bootstrap_snapshot_if_needed command.
+ */
+export interface BackendSyncBootstrapResult {
+  status: string;
+  message: string;
+  snapshotId: string | null;
+  cursor: number | null;
+}
+
+/**
+ * Result from sync_trigger_cycle command.
+ */
+export interface BackendSyncCycleResult {
+  status: string;
+  lockVersion: number;
+  pushedCount: number;
+  pulledCount: number;
+  cursor: number;
+  needsBootstrap: boolean;
+}
+
+export interface BackendSyncBackgroundEngineResult {
+  status: string;
+  message: string;
+}
+
+export interface BackendSyncSnapshotUploadResult {
+  status: string;
+  snapshotId: string | null;
+  oplogSeq: number | null;
+  message: string;
+}
+
+/**
  * Ephemeral key pair for secure pairing operations.
  */
 export interface EphemeralKeyPair {

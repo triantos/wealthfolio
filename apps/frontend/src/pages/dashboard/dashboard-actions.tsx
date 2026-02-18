@@ -1,4 +1,6 @@
 import { ActionPalette, type ActionPaletteGroup } from "@/components/action-palette";
+import { syncService, useDeviceSync } from "@/features/devices-sync";
+import { SyncStates } from "@/features/devices-sync/types";
 import { useSyncBrokerData } from "@/features/wealthfolio-connect/hooks";
 import { useWealthfolioConnect } from "@/features/wealthfolio-connect/providers/wealthfolio-connect-provider";
 import {
@@ -32,6 +34,10 @@ export function DashboardActions({ onAddAsset, onAddLiability }: DashboardAction
     userInfo?.team?.subscription_status === "active" ||
     userInfo?.team?.subscription_status === "trialing";
   const showSyncAction = isEnabled && isConnected && hasSubscription;
+
+  // Device sync
+  const { state: deviceSync } = useDeviceSync();
+  const showDeviceSyncAction = deviceSync.syncState === SyncStates.READY;
 
   const groups = useMemo((): ActionPaletteGroup[] => {
     const primaryActions =
@@ -69,6 +75,15 @@ export function DashboardActions({ onAddAsset, onAddLiability }: DashboardAction
                 },
               ]
             : []),
+          ...(showDeviceSyncAction
+            ? [
+                {
+                  icon: Icons.CloudSync,
+                  label: "Sync Devices",
+                  onClick: () => void syncService.triggerSyncCycle(),
+                },
+              ]
+            : []),
           {
             icon: Icons.Refresh,
             label: "Update Prices",
@@ -92,6 +107,7 @@ export function DashboardActions({ onAddAsset, onAddLiability }: DashboardAction
     onAddAsset,
     onAddLiability,
     showSyncAction,
+    showDeviceSyncAction,
     syncBrokerData,
     updatePortfolioMutation,
     recalculatePortfolioMutation,

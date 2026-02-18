@@ -6,7 +6,7 @@ use diesel::sql_query;
 use diesel::sql_types::Text;
 use diesel::sqlite::Sqlite;
 use diesel::sqlite::SqliteConnection;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use super::model::{MarketDataProviderSettingDB, QuoteDB, UpdateMarketDataProviderSettingDB};
@@ -81,6 +81,45 @@ impl QuoteStore for MarketDataRepository {
 
         self.writer
             .exec(move |conn: &mut SqliteConnection| -> Result<usize> {
+                // Skip provider quotes for days that already have a MANUAL override.
+                let db_rows = {
+                    let provider_pairs: HashSet<(&str, &str)> = db_rows
+                        .iter()
+                        .filter(|r| r.source != "MANUAL")
+                        .map(|r| (r.asset_id.as_str(), r.day.as_str()))
+                        .collect();
+
+                    if provider_pairs.is_empty() {
+                        db_rows
+                    } else {
+                        let asset_ids: Vec<&str> = provider_pairs.iter().map(|(a, _)| *a).collect();
+                        let days: Vec<&str> = provider_pairs.iter().map(|(_, d)| *d).collect();
+
+                        let manual_days: HashSet<(String, String)> = quotes_dsl::quotes
+                            .filter(quotes_dsl::source.eq("MANUAL"))
+                            .filter(quotes_dsl::asset_id.eq_any(&asset_ids))
+                            .filter(quotes_dsl::day.eq_any(&days))
+                            .select((quotes_dsl::asset_id, quotes_dsl::day))
+                            .load::<(String, String)>(conn)
+                            .map_err(StorageError::QueryFailed)?
+                            .into_iter()
+                            .collect();
+
+                        if manual_days.is_empty() {
+                            db_rows
+                        } else {
+                            db_rows
+                                .into_iter()
+                                .filter(|r| {
+                                    r.source == "MANUAL"
+                                        || !manual_days
+                                            .contains(&(r.asset_id.clone(), r.day.clone()))
+                                })
+                                .collect()
+                        }
+                    }
+                };
+
                 let mut total_upserted = 0;
                 for chunk in db_rows.chunks(1_000) {
                     total_upserted += diesel::replace_into(quotes_dsl::quotes)
@@ -100,6 +139,23 @@ impl QuoteStore for MarketDataRepository {
             .exec(move |conn: &mut SqliteConnection| -> Result<usize> {
                 let count = diesel::delete(
                     quotes_dsl::quotes.filter(quotes_dsl::asset_id.eq(asset_id_str)),
+                )
+                .execute(conn)
+                .map_err(StorageError::QueryFailed)?;
+                Ok(count)
+            })
+            .await
+    }
+
+    async fn delete_provider_quotes_for_asset(&self, asset_id: &AssetId) -> Result<usize> {
+        let asset_id_str = asset_id.as_str().to_string();
+
+        self.writer
+            .exec(move |conn: &mut SqliteConnection| -> Result<usize> {
+                let count = diesel::delete(
+                    quotes_dsl::quotes
+                        .filter(quotes_dsl::asset_id.eq(asset_id_str))
+                        .filter(quotes_dsl::source.ne("MANUAL")),
                 )
                 .execute(conn)
                 .map_err(StorageError::QueryFailed)?;

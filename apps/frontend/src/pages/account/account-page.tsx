@@ -20,7 +20,7 @@ import {
 } from "@wealthfolio/ui";
 import { useMemo, useState } from "react";
 
-import { MobileActionsMenu } from "@/components/mobile-actions-menu";
+import { ActionPalette, type ActionPaletteGroup } from "@/components/action-palette";
 import { PrivacyToggle } from "@/components/privacy-toggle";
 import { Button } from "@wealthfolio/ui/components/ui/button";
 import {
@@ -58,6 +58,7 @@ import {
 import { canAddHoldings } from "@/lib/activity-restrictions";
 import { cn } from "@/lib/utils";
 import { PortfolioUpdateTrigger } from "@/pages/dashboard/portfolio-update-trigger";
+import { useRecalculatePortfolioMutation } from "@/hooks/use-calculate-portfolio";
 import { useCalculatePerformanceHistory } from "@/pages/performance/hooks/use-performance-data";
 import { useQuery } from "@tanstack/react-query";
 import { Icons, type Icon } from "@wealthfolio/ui";
@@ -111,13 +112,14 @@ const AccountPage = () => {
     useState<TimePeriod>(INITIAL_INTERVAL_CODE);
   const [desktopSelectorOpen, setDesktopSelectorOpen] = useState(false);
   const [mobileSelectorOpen, setMobileSelectorOpen] = useState(false);
-  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
+  const [actionPaletteOpen, setActionPaletteOpen] = useState(false);
   const [isEditingHoldings, setIsEditingHoldings] = useState(false);
   const [showSnapshotMarkers, setShowSnapshotMarkers] = useState(false);
   const [editingSnapshotDate, setEditingSnapshotDate] = useState<string | null>(null);
   const [selectedActivityDate, setSelectedActivityDate] = useState<string | null>(null);
   const [isActivitySheetOpen, setIsActivitySheetOpen] = useState(false);
 
+  const recalculatePortfolioMutation = useRecalculatePortfolioMutation();
   const { accounts, isLoading: isAccountsLoading } = useAccounts();
   const account = useMemo(() => accounts?.find((acc) => acc.id === id), [accounts, id]);
 
@@ -227,12 +229,16 @@ const AccountPage = () => {
   }, [account]);
 
   // Pass tracking mode to the performance hook for SOTA calculations
-  const { data: performanceResponse, isLoading: isPerformanceHistoryLoading } =
-    useCalculatePerformanceHistory({
-      selectedItems: accountTrackedItem ? [accountTrackedItem] : [],
-      dateRange: dateRange,
-      trackingMode: isHoldingsMode ? "HOLDINGS" : "TRANSACTIONS",
-    });
+  const {
+    data: performanceResponse,
+    isLoading: isPerformanceHistoryLoading,
+    hasErrors: hasPerformanceError,
+    errorMessages: performanceErrorMessages,
+  } = useCalculatePerformanceHistory({
+    selectedItems: accountTrackedItem ? [accountTrackedItem] : [],
+    dateRange: dateRange,
+    trackingMode: isHoldingsMode ? "HOLDINGS" : "TRANSACTIONS",
+  });
 
   const accountPerformance = performanceResponse?.[0] || null;
 
@@ -258,7 +264,6 @@ const AccountPage = () => {
   }, [valuationHistory]);
 
   const isLoading = isAccountsLoading || isValuationHistoryLoading;
-  const isDetailsLoading = isLoading || isPerformanceHistoryLoading;
 
   // Callback for IntervalSelector
   const handleIntervalSelect = (
@@ -297,123 +302,70 @@ const AccountPage = () => {
       <PageHeader
         onBack={() => navigate(-1)}
         actions={
-          <>
-            <div className="hidden items-center gap-2 sm:flex">
-              <TooltipProvider>
-                {canEditHoldingsDirectly ? (
-                  // HOLDINGS mode (manual): Import and Update Holdings buttons
-                  <>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => navigate(`/import?account=${id}`)}
-                        >
-                          <Icons.Import className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Import holdings CSV</p>
-                      </TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => {
-                            setEditingSnapshotDate(null);
-                            setIsEditingHoldings(true);
-                          }}
-                        >
-                          <Icons.Pencil className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Update holdings</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </>
-                ) : (
-                  // TRANSACTIONS mode: Import and Record transaction buttons
-                  <>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => navigate(`/import?account=${id}`)}
-                        >
-                          <Icons.Import className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Import CSV</p>
-                      </TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => navigate(`/activities/manage?account=${id}`)}
-                        >
-                          <Icons.Plus className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Record transaction</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </>
-                )}
-              </TooltipProvider>
-            </div>
-
-            <div className="sm:hidden">
-              <MobileActionsMenu
-                open={mobileActionsOpen}
-                onOpenChange={setMobileActionsOpen}
-                title="Account Actions"
-                description="Manage this account"
-                actions={
-                  canEditHoldingsDirectly
-                    ? [
+          <ActionPalette
+            open={actionPaletteOpen}
+            onOpenChange={setActionPaletteOpen}
+            groups={
+              canEditHoldingsDirectly
+                ? ([
+                    {
+                      title: "Holdings",
+                      items: [
                         {
-                          icon: "Import",
-                          label: "Import Holdings",
-                          description: "Import holdings from CSV file",
-                          onClick: () => navigate(`/import?account=${id}`),
-                        },
-                        {
-                          icon: "Pencil",
+                          icon: Icons.Pencil,
                           label: "Update Holdings",
-                          description: "Edit positions and cash balances",
                           onClick: () => {
                             setEditingSnapshotDate(null);
                             setIsEditingHoldings(true);
                           },
                         },
-                      ]
-                    : [
                         {
-                          icon: "Import",
+                          icon: Icons.Import,
                           label: "Import CSV",
-                          description: "Import transactions from file",
                           onClick: () => navigate(`/import?account=${id}`),
                         },
+                      ],
+                    },
+                    {
+                      title: "Manage",
+                      items: [
                         {
-                          icon: "Plus",
+                          icon: Icons.Clock,
+                          label: "Recalculate History",
+                          onClick: () => recalculatePortfolioMutation.mutate(),
+                        },
+                      ],
+                    },
+                  ] satisfies ActionPaletteGroup[])
+                : ([
+                    {
+                      title: "Transactions",
+                      items: [
+                        {
+                          icon: Icons.Plus,
                           label: "Record Transaction",
-                          description: "Add a new activity manually",
                           onClick: () => navigate(`/activities/manage?account=${id}`),
                         },
-                      ]
-                }
-              />
-            </div>
-          </>
+                        {
+                          icon: Icons.Import,
+                          label: "Import CSV",
+                          onClick: () => navigate(`/import?account=${id}`),
+                        },
+                      ],
+                    },
+                    {
+                      title: "Manage",
+                      items: [
+                        {
+                          icon: Icons.Clock,
+                          label: "Recalculate History",
+                          onClick: () => recalculatePortfolioMutation.mutate(),
+                        },
+                      ],
+                    },
+                  ] satisfies ActionPaletteGroup[])
+            }
+          />
         }
       >
         <div className="flex items-center gap-2" data-tauri-drag-region="true">
@@ -571,19 +523,21 @@ const AccountPage = () => {
                               currency={account?.currency ?? baseCurrency}
                             />
                           </p>
-                          <div className="flex items-center gap-2 text-sm">
-                            <GainAmount
-                              className="text-sm font-light"
-                              value={frontendGainLossAmount}
-                              currency={account?.currency ?? baseCurrency}
-                              displayCurrency={false}
-                            />
-                            <GainPercent
-                              value={percentageToDisplay}
-                              variant="badge"
-                              className="text-xs"
-                            />
-                          </div>
+                          {!hasPerformanceError && (
+                            <div className="flex items-center gap-2 text-sm">
+                              <GainAmount
+                                className="text-sm font-light"
+                                value={frontendGainLossAmount}
+                                currency={account?.currency ?? baseCurrency}
+                                displayCurrency={false}
+                              />
+                              <GainPercent
+                                value={percentageToDisplay}
+                                variant="badge"
+                                className="text-xs"
+                              />
+                            </div>
+                          )}
                         </div>
                       </div>
                     </PortfolioUpdateTrigger>
@@ -650,7 +604,9 @@ const AccountPage = () => {
                   valuation={currentValuation}
                   performance={accountPerformance}
                   className="grow"
-                  isLoading={isDetailsLoading || isPerformanceHistoryLoading}
+                  isLoading={isLoading}
+                  isPerformanceLoading={isPerformanceHistoryLoading}
+                  performanceError={hasPerformanceError ? performanceErrorMessages[0] : undefined}
                   hideBalanceEdit={isHoldingsMode}
                   isHoldingsMode={isHoldingsMode}
                 />

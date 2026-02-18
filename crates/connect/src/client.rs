@@ -179,7 +179,6 @@ impl ConnectApiClient {
     /// Make a GET request and parse the response.
     async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
         let url = format!("{}{}", self.base_url, path);
-        debug!("[ConnectApi] GET {}", url);
 
         let response = self
             .client
@@ -195,17 +194,10 @@ impl ConnectApiClient {
     /// Parse an HTTP response, handling errors appropriately.
     async fn parse_response<T: DeserializeOwned>(&self, response: reqwest::Response) -> Result<T> {
         let status = response.status();
-        let url = response.url().to_string();
         let body = response
             .text()
             .await
             .map_err(|e| Error::Unexpected(format!("Failed to read response: {}", e)))?;
-
-        // Log raw response body for debugging
-        debug!(
-            "[ConnectApi] Response from {} (status={}): {}",
-            url, status, &body
-        );
 
         if !status.is_success() {
             // Try to parse error response for a better message
@@ -398,12 +390,6 @@ impl BrokerApiClient for ConnectApiClient {
             .await
             .map_err(|e| Error::Unexpected(format!("Failed to read response: {}", e)))?;
 
-        // Log raw connections payload at INFO level for debugging
-        info!(
-            "[ConnectApi] Raw connections API response (status={}): {}",
-            status, &body
-        );
-
         if !status.is_success() {
             return Err(Error::Unexpected(format!(
                 "API error {}: {}",
@@ -484,12 +470,6 @@ impl BrokerApiClient for ConnectApiClient {
             .await
             .map_err(|e| Error::Unexpected(format!("Failed to read response: {}", e)))?;
 
-        // Log raw accounts payload at INFO level for debugging
-        info!(
-            "[ConnectApi] Raw accounts API response (status={}): {}",
-            status, &body
-        );
-
         if !status.is_success() {
             return Err(Error::Unexpected(format!(
                 "API error {}: {}",
@@ -501,22 +481,6 @@ impl BrokerApiClient for ConnectApiClient {
         let api_response: ApiAccountsResponse = serde_json::from_str(&body).map_err(|e| {
             Error::Unexpected(format!("Failed to parse accounts: {} - {}", e, body))
         })?;
-
-        info!(
-            "[ConnectApi] Parsed {} broker accounts from API",
-            api_response.accounts.len()
-        );
-
-        // Log each account's sync_enabled status after parsing
-        for acc in &api_response.accounts {
-            info!(
-                "[ConnectApi] Account '{}' (id={:?}): sync_enabled={}, shared_with_household={}",
-                acc.name.as_deref().unwrap_or("unnamed"),
-                acc.id,
-                acc.sync_enabled,
-                acc.shared_with_household
-            );
-        }
 
         Ok(api_response.accounts)
     }
@@ -578,8 +542,6 @@ pub async fn fetch_subscription_plans_public(base_url: &str) -> Result<PlansResp
     let base_url = base_url.trim_end_matches('/');
     let url = format!("{}/api/v1/subscription/plans", base_url);
 
-    debug!("[ConnectApi] GET {} (public)", url);
-
     let response = client
         .get(&url)
         .header(CONTENT_TYPE, "application/json")
@@ -592,11 +554,6 @@ pub async fn fetch_subscription_plans_public(base_url: &str) -> Result<PlansResp
         .text()
         .await
         .map_err(|e| Error::Unexpected(format!("Failed to read response: {}", e)))?;
-
-    debug!(
-        "[ConnectApi] Public plans response (status={}): {}",
-        status, &body
-    );
 
     if !status.is_success() {
         return Err(Error::Unexpected(format!(

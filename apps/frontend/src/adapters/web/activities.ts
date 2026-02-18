@@ -1,7 +1,35 @@
 // Web-specific activity commands
+import { getAuthToken } from "@/lib/auth-token";
 import type { ParseConfig, ParsedCsvResult } from "@/lib/types";
 import { API_PREFIX, logger } from "./core";
-import { getAuthToken } from "@/lib/auth-token";
+
+async function extractErrorMessage(response: Response): Promise<string | null> {
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (contentType.includes("application/json")) {
+    try {
+      const payload = (await response.json()) as {
+        message?: unknown;
+        error?: unknown;
+      };
+      if (typeof payload.message === "string" && payload.message.trim()) {
+        return payload.message.trim();
+      }
+      if (typeof payload.error === "string" && payload.error.trim()) {
+        return payload.error.trim();
+      }
+    } catch {
+      // Fall through to text parsing
+    }
+  }
+
+  try {
+    const text = (await response.text()).trim();
+    return text || null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Parse a CSV file with the given configuration.
@@ -26,10 +54,15 @@ export const parseCsv = async (file: File, config: ParseConfig): Promise<ParsedC
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const details = await extractErrorMessage(response);
+      const fallback = `Request failed (${response.status}${response.statusText ? ` ${response.statusText}` : ""})`;
+      throw new Error(
+        details ? `Failed to parse CSV: ${details}` : `Failed to parse CSV: ${fallback}`,
+      );
     }
 
-    return await response.json();
+    const parsed = (await response.json()) as ParsedCsvResult;
+    return parsed;
   } catch (err) {
     logger.error("Error parsing CSV file:", err);
     throw err;
