@@ -703,6 +703,7 @@ impl MarketDataProvider for YahooProvider {
                 InstrumentKind::Crypto,
                 InstrumentKind::Fx,
                 InstrumentKind::Option,
+                InstrumentKind::Metal,
             ],
             coverage: Coverage::global_best_effort(),
             supports_latest: true,

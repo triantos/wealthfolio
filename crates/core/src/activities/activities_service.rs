@@ -441,12 +441,21 @@ impl ActivityService {
             }
         }
 
-        // 2. OCC option symbol detection (e.g., AAPL240119C00195000)
+        // 2. Precious metal symbol detection (e.g., XAU, XAU-1KG, XAG-500G)
+        {
+            let upper = symbol.to_uppercase();
+            let base = upper.split('-').next().unwrap_or(&upper);
+            if matches!(base, "XAU" | "XAG" | "XPT" | "XPD") {
+                return (AssetKind::Investment, Some(InstrumentType::Metal));
+            }
+        }
+
+        // 3. OCC option symbol detection (e.g., AAPL240119C00195000)
         if crate::utils::occ_symbol::parse_occ_symbol(symbol).is_ok() {
             return (AssetKind::Investment, Some(InstrumentType::Option));
         }
 
-        // 3. ISIN detection (e.g., US0378331005) — full Luhn validation
+        // 4. ISIN detection (e.g., US0378331005) — full Luhn validation
         //
         // ISIN is an identifier format, not an instrument type.
         // It can represent bonds, equities, ETFs, and more. Return no inferred
@@ -455,7 +464,7 @@ impl ActivityService {
             return (AssetKind::Investment, None);
         }
 
-        // 4. Crypto pair pattern (e.g., BTC-USD, ETH-CAD) — checked before
+        // 5. Crypto pair pattern (e.g., BTC-USD, ETH-CAD) — checked before
         //    exchange_mic because brokers may attach their MIC to crypto pairs
         let upper_symbol = symbol.to_uppercase();
         if let Some((_base, quote)) = upper_symbol.rsplit_once('-') {
@@ -470,12 +479,12 @@ impl ActivityService {
             }
         }
 
-        // 5. If exchange MIC is provided, it's an equity
+        // 6. If exchange MIC is provided, it's an equity
         if exchange_mic.is_some() {
             return (AssetKind::Investment, Some(InstrumentType::Equity));
         }
 
-        // 6. Common crypto symbols heuristic (no MIC, bare symbol like BTC, ETH)
+        // 7. Common crypto symbols heuristic (no MIC, bare symbol like BTC, ETH)
         let common_crypto = [
             "BTC", "ETH", "XRP", "LTC", "BCH", "ADA", "DOT", "LINK", "XLM", "DOGE", "UNI", "SOL",
             "AVAX", "MATIC", "ATOM", "ALGO", "VET", "FIL", "TRX", "ETC", "XMR", "AAVE", "MKR",
@@ -485,7 +494,7 @@ impl ActivityService {
             return (AssetKind::Investment, Some(InstrumentType::Crypto));
         }
 
-        // 7. Default to equity (most common case)
+        // 8. Default to equity (most common case)
         (AssetKind::Investment, Some(InstrumentType::Equity))
     }
 
@@ -733,6 +742,8 @@ impl ActivityService {
             .map(|s| parse_symbol_with_exchange_suffix(s).0.to_string())
             .unwrap_or_default();
 
+        let is_metal = effective_instrument_type.as_ref() == Some(&InstrumentType::Metal);
+
         // Use pair quote for crypto/FX; otherwise resolve with deterministic precedence:
         // explicit hint -> existing asset -> latest provider quote -> MIC fallback -> activity/account.
         let asset_currency = if is_crypto {
@@ -742,6 +753,9 @@ impl ActivityService {
                 .map(|(_, quote)| quote)
                 .or_else(|| quote_ccy_hint.clone())
                 .unwrap_or_else(|| currency.clone())
+        } else if is_metal {
+            // Spot metals are USD-denominated (GC=F, SI=F); FX handles conversion
+            "USD".to_string()
         } else if is_non_security_hint {
             quote_ccy_hint.clone().unwrap_or(currency.clone())
         } else {
@@ -1430,11 +1444,15 @@ impl ActivityService {
         let quote_lookup_symbol = base_symbol.to_string();
 
         // For crypto, use the quote currency from the pair if available
+        let is_metal = instrument_type.as_ref() == Some(&InstrumentType::Metal);
         let asset_currency = if is_crypto {
             parse_crypto_pair_symbol(base_symbol)
                 .map(|(_, quote)| quote)
                 .or_else(|| quote_ccy_hint.clone())
                 .unwrap_or_else(|| currency.clone())
+        } else if is_metal {
+            // Spot metals are USD-denominated (GC=F, SI=F); FX handles conversion
+            "USD".to_string()
         } else {
             let existing_asset_quote_ccy = self.existing_asset_quote_ccy_by_id(
                 activity.get_symbol_id().filter(|id| !id.trim().is_empty()),
@@ -2197,52 +2215,58 @@ impl ActivityServiceTrait for ActivityService {
             }
 
             if activity.quote_ccy.is_none() {
-                let terminal_fallback = if activity.currency.trim().is_empty() {
-                    account_currency.as_str()
+                let is_metal = effective_instrument_type.as_ref()
+                    == Some(&InstrumentType::Metal);
+                if is_metal {
+                    activity.quote_ccy = Some("USD".to_string());
                 } else {
-                    activity.currency.as_str()
-                };
-                let explicit_quote_hint =
-                    Self::normalize_quote_ccy_hint(activity.quote_ccy.as_deref());
+                    let terminal_fallback = if activity.currency.trim().is_empty() {
+                        account_currency.as_str()
+                    } else {
+                        activity.currency.as_str()
+                    };
+                    let explicit_quote_hint =
+                        Self::normalize_quote_ccy_hint(activity.quote_ccy.as_deref());
 
-                let (resolved_quote_ccy, resolution_source) = if matches!(
-                    effective_instrument_type,
-                    Some(InstrumentType::Crypto | InstrumentType::Fx)
-                ) {
-                    self.resolve_quote_ccy(
-                        &normalized_symbol,
-                        None,
-                        effective_instrument_type.as_ref(),
-                        parse_crypto_pair_symbol(base_symbol)
-                            .map(|(_, quote)| quote)
-                            .or(explicit_quote_hint.clone())
-                            .as_deref(),
-                        asset_currency.as_deref(),
-                        terminal_fallback,
-                        false,
-                    )
-                    .await
-                } else {
-                    self.resolve_quote_ccy(
-                        &normalized_symbol,
-                        resolved_mic.as_deref(),
-                        effective_instrument_type.as_ref(),
-                        explicit_quote_hint.as_deref(),
-                        asset_currency.as_deref(),
-                        terminal_fallback,
-                        true,
-                    )
-                    .await
-                };
+                    let (resolved_quote_ccy, resolution_source) = if matches!(
+                        effective_instrument_type,
+                        Some(InstrumentType::Crypto | InstrumentType::Fx)
+                    ) {
+                        self.resolve_quote_ccy(
+                            &normalized_symbol,
+                            None,
+                            effective_instrument_type.as_ref(),
+                            parse_crypto_pair_symbol(base_symbol)
+                                .map(|(_, quote)| quote)
+                                .or(explicit_quote_hint.clone())
+                                .as_deref(),
+                            asset_currency.as_deref(),
+                            terminal_fallback,
+                            false,
+                        )
+                        .await
+                    } else {
+                        self.resolve_quote_ccy(
+                            &normalized_symbol,
+                            resolved_mic.as_deref(),
+                            effective_instrument_type.as_ref(),
+                            explicit_quote_hint.as_deref(),
+                            asset_currency.as_deref(),
+                            terminal_fallback,
+                            true,
+                        )
+                        .await
+                    };
 
-                activity.quote_ccy = Some(resolved_quote_ccy);
+                    activity.quote_ccy = Some(resolved_quote_ccy);
 
-                if resolution_source == QuoteCcyResolutionSource::MicFallback {
-                    Self::add_activity_warning(
-                        &mut activity,
-                        "_quote_ccy_fallback",
-                        "Quote currency inferred from exchange MIC fallback. Verify symbol quote currency.",
-                    );
+                    if resolution_source == QuoteCcyResolutionSource::MicFallback {
+                        Self::add_activity_warning(
+                            &mut activity,
+                            "_quote_ccy_fallback",
+                            "Quote currency inferred from exchange MIC fallback. Verify symbol quote currency.",
+                        );
+                    }
                 }
             }
 
