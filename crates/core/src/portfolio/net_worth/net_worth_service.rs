@@ -16,6 +16,7 @@ use crate::accounts::{account_types, AccountRepositoryTrait};
 use crate::assets::{AssetKind, AssetRepositoryTrait};
 use crate::constants::DECIMAL_PRECISION;
 use crate::errors::Result;
+use crate::fx::currency::normalize_amount;
 use crate::fx::FxServiceTrait;
 use crate::portfolio::snapshot::SnapshotRepositoryTrait;
 use crate::portfolio::valuation::ValuationRepositoryTrait;
@@ -82,12 +83,12 @@ impl NetWorthService {
     }
 
     /// Get the latest quote for an asset on or before the given date.
-    /// Returns (close_price, valuation_date) if found.
+    /// Returns (close_price, quote_currency, valuation_date) if found.
     fn get_latest_quote_as_of(
         &self,
         asset_id: &str,
         date: NaiveDate,
-    ) -> Option<(Decimal, NaiveDate)> {
+    ) -> Option<(Decimal, String, NaiveDate)> {
         // Get all quotes for this symbol and find the latest one <= date
         let quotes = self.quote_service.get_historical_quotes(asset_id).ok()?;
 
@@ -95,7 +96,7 @@ impl NetWorthService {
             .iter()
             .filter(|q| q.timestamp.date_naive() <= date)
             .max_by_key(|q| q.timestamp.date_naive())
-            .map(|q| (q.close, q.timestamp.date_naive()))
+            .map(|q| (q.close, q.currency.clone(), q.timestamp.date_naive()))
     }
 
     /// Calculate market value for a position, converting to base currency.
@@ -305,29 +306,38 @@ impl NetWorthServiceTrait for NetWorthService {
                 };
 
                 // Get the latest quote for this asset as of the date
-                let (price, valuation_date) = match self.get_latest_quote_as_of(asset_id, date) {
-                    Some((p, d)) => (p, d),
-                    None => {
-                        // No quote found, use cost basis as fallback
-                        if position.quantity > Decimal::ZERO {
-                            let implied_price = position.total_cost_basis / position.quantity;
-                            // Use snapshot date as valuation date
-                            (implied_price, snapshot.snapshot_date)
-                        } else {
-                            warn!(
-                                "No quote found for {} and cannot derive from cost basis",
-                                asset_id
-                            );
-                            continue;
+                let (price, quote_currency, valuation_date) =
+                    match self.get_latest_quote_as_of(asset_id, date) {
+                        Some((p, c, d)) => (p, c, d),
+                        None => {
+                            // No quote found, use cost basis as fallback
+                            if position.quantity > Decimal::ZERO {
+                                let implied_price = position.total_cost_basis / position.quantity;
+                                // Use snapshot date as valuation date; cost basis is in position.currency (major unit)
+                                (
+                                    implied_price,
+                                    position.currency.clone(),
+                                    snapshot.snapshot_date,
+                                )
+                            } else {
+                                warn!(
+                                    "No quote found for {} and cannot derive from cost basis",
+                                    asset_id
+                                );
+                                continue;
+                            }
                         }
-                    }
-                };
+                    };
+
+                // Normalize minor-currency quotes (e.g. GBp → GBP, ZAc → ZAR) before valuation.
+                let (normalized_price, normalized_currency) =
+                    normalize_amount(price, &quote_currency);
 
                 // Calculate market value in base currency
                 let market_value_base = match self.calculate_market_value(
                     position.quantity,
-                    price,
-                    &position.currency,
+                    normalized_price,
+                    normalized_currency,
                     &base_currency,
                     date,
                 ) {
@@ -404,25 +414,29 @@ impl NetWorthServiceTrait for NetWorthService {
             }
 
             // Get the latest quote for this alternative asset
-            let (price, valuation_date) = match self.get_latest_quote_as_of(&asset.id, date) {
-                Some((p, d)) => (p, d),
-                None => {
-                    debug!(
-                        "No quote found for alternative asset {}, skipping",
-                        asset.id
-                    );
-                    continue;
-                }
-            };
+            let (price, quote_currency, valuation_date) =
+                match self.get_latest_quote_as_of(&asset.id, date) {
+                    Some((p, c, d)) => (p, c, d),
+                    None => {
+                        debug!(
+                            "No quote found for alternative asset {}, skipping",
+                            asset.id
+                        );
+                        continue;
+                    }
+                };
 
             // For alternative assets, quantity is always 1 (value-based model)
             let quantity = Decimal::ONE;
 
+            // Normalize minor-currency quotes before valuation.
+            let (normalized_price, normalized_currency) = normalize_amount(price, &quote_currency);
+
             // Calculate market value in base currency
             let market_value_base = match self.calculate_market_value(
                 quantity,
-                price,
-                &asset.quote_ccy,
+                normalized_price,
+                normalized_currency,
                 &base_currency,
                 date,
             ) {
@@ -586,18 +600,22 @@ impl NetWorthServiceTrait for NetWorthService {
         let mut initial_asset_values: HashMap<String, Decimal> = HashMap::new();
 
         for asset in &alternative_assets {
-            if let Some((price, _)) = self.get_latest_quote_as_of(&asset.id, start_date) {
-                let value_base = if asset.quote_ccy == base_currency {
-                    price
+            if let Some((price, quote_currency, _)) =
+                self.get_latest_quote_as_of(&asset.id, start_date)
+            {
+                let (normalized_price, normalized_currency) =
+                    normalize_amount(price, &quote_currency);
+                let value_base = if normalized_currency == base_currency {
+                    normalized_price
                 } else {
                     self.fx_service
                         .convert_currency_for_date(
-                            price,
-                            &asset.quote_ccy,
+                            normalized_price,
+                            normalized_currency,
                             &base_currency,
                             start_date,
                         )
-                        .unwrap_or(price)
+                        .unwrap_or(normalized_price)
                 };
                 initial_asset_values.insert(asset.id.clone(), value_base);
             }
