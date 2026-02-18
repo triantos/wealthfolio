@@ -289,6 +289,13 @@ mod tests {
             unimplemented!()
         }
 
+        async fn fetch_bond_details(
+            &self,
+            _isin: &str,
+        ) -> Option<crate::assets::BondSpec> {
+            None
+        }
+
         async fn fetch_quotes_from_provider(
             &self,
             _asset_id: &str,
@@ -459,6 +466,8 @@ mod tests {
                 notes: None,
                 pricing_mode: "MARKET".to_string(),
                 preferred_provider: None,
+                instrument_type: Some("EQUITY".to_string()),
+                contract_multiplier: Decimal::ONE,
                 classifications: None,
             })
         } else {

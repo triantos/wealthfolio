@@ -96,7 +96,11 @@ impl NetWorthService {
             .iter()
             .filter(|q| q.timestamp.date_naive() <= date)
             .max_by_key(|q| q.timestamp.date_naive())
-            .map(|q| (q.close, q.currency.clone(), q.timestamp.date_naive()))
+            .map(|q| {
+                let (normalized_price, normalized_currency) =
+                    normalize_amount(q.close, &q.currency);
+                (normalized_price, normalized_currency.to_string(), q.timestamp.date_naive())
+            })
     }
 
     /// Calculate market value for a position, converting to base currency.
@@ -165,10 +169,11 @@ impl NetWorthService {
             }
         }
 
-        // Build breakdown items - only include categories with non-zero values
+        // Build breakdown items - include categories with non-zero values
+        // (negative totals kept: e.g. negative cash from margin/overdraft)
         let mut breakdown: Vec<BreakdownItem> = category_totals
             .into_iter()
-            .filter(|(_, value)| *value > Decimal::ZERO)
+            .filter(|(_, value)| !value.is_zero())
             .map(|(category, value)| BreakdownItem {
                 category: Self::category_key(category).to_string(),
                 name: Self::category_display_name(category).to_string(),
@@ -312,13 +317,10 @@ impl NetWorthServiceTrait for NetWorthService {
                         None => {
                             // No quote found, use cost basis as fallback
                             if position.quantity > Decimal::ZERO {
-                                let implied_price = position.total_cost_basis / position.quantity;
-                                // Use snapshot date as valuation date; cost basis is in position.currency (major unit)
-                                (
-                                    implied_price,
-                                    position.currency.clone(),
-                                    snapshot.snapshot_date,
-                                )
+                                let implied_price =
+                                    position.total_cost_basis / position.quantity;
+                                // Use snapshot date as valuation date
+                                (implied_price, position.currency.clone(), snapshot.snapshot_date)
                             } else {
                                 warn!(
                                     "No quote found for {} and cannot derive from cost basis",
@@ -329,15 +331,12 @@ impl NetWorthServiceTrait for NetWorthService {
                         }
                     };
 
-                // Normalize minor-currency quotes (e.g. GBp → GBP, ZAc → ZAR) before valuation.
-                let (normalized_price, normalized_currency) =
-                    normalize_amount(price, &quote_currency);
-
                 // Calculate market value in base currency
+                // Use the normalized quote currency for FX conversion (e.g. GBp→GBP)
                 let market_value_base = match self.calculate_market_value(
-                    position.quantity,
-                    normalized_price,
-                    normalized_currency,
+                    position.quantity * position.contract_multiplier,
+                    price,
+                    &quote_currency,
                     &base_currency,
                     date,
                 ) {
@@ -347,7 +346,7 @@ impl NetWorthServiceTrait for NetWorthService {
                             "Failed to calculate market value for {}: {}. Using local value.",
                             asset_id, e
                         );
-                        position.quantity * price
+                        position.quantity * position.contract_multiplier * price
                     }
                 };
 
@@ -446,7 +445,7 @@ impl NetWorthServiceTrait for NetWorthService {
                         "Failed to convert alternative asset {} value to base currency: {}. Using local value.",
                         asset.id, e
                     );
-                    price
+                    normalized_price
                 }
             };
 
@@ -603,19 +602,17 @@ impl NetWorthServiceTrait for NetWorthService {
             if let Some((price, quote_currency, _)) =
                 self.get_latest_quote_as_of(&asset.id, start_date)
             {
-                let (normalized_price, normalized_currency) =
-                    normalize_amount(price, &quote_currency);
-                let value_base = if normalized_currency == base_currency {
-                    normalized_price
+                let value_base = if quote_currency == base_currency {
+                    price
                 } else {
                     self.fx_service
                         .convert_currency_for_date(
-                            normalized_price,
-                            normalized_currency,
+                            price,
+                            &quote_currency,
                             &base_currency,
                             start_date,
                         )
-                        .unwrap_or(normalized_price)
+                        .unwrap_or(price)
                 };
                 initial_asset_values.insert(asset.id.clone(), value_base);
             }

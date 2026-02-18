@@ -270,8 +270,10 @@ impl AssetService {
         };
 
         let provider_config = match quote_mode {
-            QuoteMode::Market => Some(serde_json::json!({ "preferred_provider": "YAHOO" })),
-            QuoteMode::Manual => None,
+            QuoteMode::Market if spec.instrument_type.as_ref() != Some(&InstrumentType::Bond) => {
+                Some(serde_json::json!({ "preferred_provider": "YAHOO" }))
+            }
+            _ => None,
         };
 
         NewAsset {
@@ -287,6 +289,7 @@ impl AssetService {
                 .or(spec.instrument_symbol.clone()),
             instrument_exchange_mic: resolved_mic,
             provider_config,
+            metadata: spec.metadata.clone(),
             is_active: true,
             ..Default::default()
         }
@@ -592,6 +595,7 @@ impl AssetServiceTrait for AssetService {
                         kind: meta.kind.clone().unwrap_or(AssetKind::Investment),
                         quote_mode: None,
                         name: meta.name.clone(),
+                        metadata: None,
                     };
                     if let Some(key) = spec.instrument_key() {
                         if let Ok(Some(existing)) =
@@ -727,9 +731,12 @@ impl AssetServiceTrait for AssetService {
             .await;
 
         // Set preferred provider based on quote mode
+        // Bonds skip this so the rules engine can auto-discover the right provider
         let provider_config = match quote_mode {
-            QuoteMode::Market => Some(serde_json::json!({ "preferred_provider": "YAHOO" })),
-            QuoteMode::Manual => None,
+            QuoteMode::Market if instrument_type.as_ref() != Some(&InstrumentType::Bond) => {
+                Some(serde_json::json!({ "preferred_provider": "YAHOO" }))
+            }
+            _ => None,
         };
 
         let name = metadata.as_ref().and_then(|m| m.name.clone());
@@ -741,6 +748,29 @@ impl AssetServiceTrait for AssetService {
             exchange_mic.as_deref(),
             Some(currency.as_str()),
         );
+
+        // Build option metadata from OCC symbol when creating an option asset
+        let asset_metadata = if instrument_type.as_ref() == Some(&InstrumentType::Option) {
+            let symbol_str = canonical_identity
+                .instrument_symbol
+                .as_deref()
+                .or_else(|| metadata.as_ref().and_then(|m| m.instrument_symbol.as_deref()));
+            symbol_str.and_then(|sym| {
+                crate::utils::occ_symbol::parse_occ_symbol(sym).ok().map(|parsed| {
+                    let option_spec = super::OptionSpec {
+                        underlying_asset_id: String::new(),
+                        expiration: parsed.expiration,
+                        right: parsed.option_type.as_str().to_string(),
+                        strike: parsed.strike_price,
+                        multiplier: rust_decimal::Decimal::from(100),
+                        occ_symbol: Some(sym.to_string()),
+                    };
+                    serde_json::json!({ "option": option_spec })
+                })
+            })
+        } else {
+            None
+        };
 
         let new_asset = NewAsset {
             id: Some(asset_id.to_string()),
@@ -756,6 +786,7 @@ impl AssetServiceTrait for AssetService {
                 .or_else(|| metadata.as_ref().and_then(|m| m.display_code.clone())),
             provider_config,
             is_active: true,
+            metadata: asset_metadata,
             ..Default::default()
         };
 
@@ -810,6 +841,48 @@ impl AssetServiceTrait for AssetService {
                 asset_id, existing_asset.quote_mode
             );
             return Ok(existing_asset);
+        }
+
+        // Bond-specific enrichment: fetch coupon/maturity from TreasuryDirect
+        if existing_asset.is_bond()
+            && existing_asset
+                .bond_spec()
+                .map_or(true, |bs| bs.coupon_rate.is_none())
+        {
+            if let Some(isin) = existing_asset.instrument_symbol.as_deref() {
+                if let Some(bond_spec) = self.quote_service.fetch_bond_details(isin).await {
+                    debug!(
+                        "Enriched bond {} with TreasuryDirect data: coupon={:?}, maturity={:?}",
+                        asset_id, bond_spec.coupon_rate, bond_spec.maturity_date
+                    );
+                    // Merge bond spec into existing metadata
+                    let mut metadata = existing_asset
+                        .metadata
+                        .clone()
+                        .and_then(|v| v.as_object().cloned())
+                        .unwrap_or_default();
+                    if let Ok(spec_val) = serde_json::to_value(&bond_spec) {
+                        metadata.insert("bond".to_string(), spec_val);
+                    }
+                    let update = UpdateAssetProfile {
+                        name: existing_asset.name.clone(),
+                        display_code: existing_asset.display_code.clone(),
+                        notes: existing_asset.notes.clone().unwrap_or_default(),
+                        kind: None,
+                        quote_mode: Some(existing_asset.quote_mode),
+                        quote_ccy: Some(existing_asset.quote_ccy.clone()),
+                        instrument_type: None,
+                        instrument_symbol: None,
+                        instrument_exchange_mic: None,
+                        provider_config: existing_asset.provider_config.clone(),
+                        metadata: Some(serde_json::Value::Object(metadata)),
+                    };
+                    let _ = self
+                        .asset_repository
+                        .update_profile(asset_id, update)
+                        .await;
+                }
+            }
         }
 
         // Fetch profile from provider using the asset (resolver handles exchange suffix)

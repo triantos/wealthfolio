@@ -10,6 +10,10 @@ import { tryParseDate } from "@/lib/utils";
 import { parse, parseISO, isValid } from "date-fns";
 import { getDateFnsPattern } from "../utils/date-format-options";
 import { findMappedActivityType } from "../utils/activity-type-mapping";
+import {
+  normalizeInstrumentType,
+  splitInstrumentPrefixedSymbol,
+} from "../utils/instrument-type";
 import { Badge } from "@wealthfolio/ui/components/ui/badge";
 import { ProgressIndicator } from "@wealthfolio/ui/components/ui/progress-indicator";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -248,14 +252,15 @@ function mapSymbol(
   if (!csvSymbol) return { symbol: undefined };
 
   const trimmed = csvSymbol.trim();
-  const symbol = symbolMappings[trimmed] || trimmed;
+  const mappedRawSymbol = symbolMappings[trimmed] || trimmed;
+  const parsed = splitInstrumentPrefixedSymbol(mappedRawSymbol);
   const meta = symbolMappingMeta?.[trimmed];
   return {
-    symbol,
+    symbol: parsed.symbol,
     exchangeMic: meta?.exchangeMic,
     symbolName: meta?.symbolName,
     quoteCcy: meta?.quoteCcy,
-    instrumentType: meta?.instrumentType,
+    instrumentType: parsed.instrumentType || normalizeInstrumentType(meta?.instrumentType),
     quoteMode: meta?.quoteMode,
   };
 }
@@ -493,6 +498,7 @@ function createDraftActivities(
     const rawAccount = getColumnValue(row, ImportFormat.ACCOUNT);
     const rawFxRate = getColumnValue(row, ImportFormat.FX_RATE);
     const rawSubtype = getColumnValue(row, ImportFormat.SUBTYPE);
+    const rawInstrumentType = getColumnValue(row, ImportFormat.INSTRUMENT_TYPE);
 
     // Parse and normalize values
     const activityDate = parseDateValue(rawDate, dateFormat);
@@ -505,6 +511,7 @@ function createDraftActivities(
       instrumentType: mappedInstrumentType,
       quoteMode: mappedQuoteMode,
     } = mapSymbol(rawSymbol, symbolMappings, symbolMappingMeta);
+    const normalizedCsvInstrumentType = normalizeInstrumentType(rawInstrumentType);
     const quantity = parseNumericValue(rawQuantity, decimalSeparator, thousandsSeparator);
     const unitPrice = parseNumericValue(rawUnitPrice, decimalSeparator, thousandsSeparator);
     const amount = parseNumericValue(rawAmount, decimalSeparator, thousandsSeparator);
@@ -536,7 +543,7 @@ function createDraftActivities(
       exchangeMic: mappedExchangeMic,
       symbolName: mappedSymbolName,
       quoteCcy: mappedQuoteCcy,
-      instrumentType: mappedInstrumentType,
+      instrumentType: normalizedCsvInstrumentType || mappedInstrumentType,
       quoteMode: mappedQuoteMode,
       quantity,
       unitPrice,
@@ -681,11 +688,18 @@ export function ReviewStep() {
           updatedDrafts = drafts.map((draft) => {
             const backendResult = validated.find((v) => v.lineNumber === draft.rowIndex + 1);
             if (!backendResult) {
+              const localValidation = validateDraft(draft);
               return {
                 ...draft,
                 accountId,
+                errors: localValidation.errors,
+                warnings: localValidation.warnings,
                 duplicateOfId: undefined,
                 duplicateOfLineNumber: undefined,
+                status:
+                  draft.status === "skipped"
+                    ? draft.status
+                    : localValidation.status,
               };
             }
 
@@ -705,8 +719,11 @@ export function ReviewStep() {
               backendErrors.general = ["Validation failed"];
             }
 
-            const mergedErrors = mergeIssueMaps(draft.errors || {}, backendErrors);
-            const retainedWarnings = { ...(draft.warnings || {}) };
+            // Rebuild validation from current row values each run so edited rows
+            // can clear old errors (especially symbol/instrument type issues).
+            const localValidation = validateDraft(draft);
+            const mergedErrors = mergeIssueMaps(localValidation.errors, backendErrors);
+            const retainedWarnings = { ...(localValidation.warnings || {}) };
             delete retainedWarnings._duplicate;
             const mergedWarnings = mergeIssueMaps(retainedWarnings, backendWarnings);
             const hasErrors = Object.keys(mergedErrors).length > 0;
@@ -851,11 +868,29 @@ export function ReviewStep() {
               : {}),
           }),
         );
+
+        // Re-run backend validation when symbol identity fields change so
+        // symbol/instrument issues refresh immediately in Review.
+        const needsBackendValidation = [
+          "symbol",
+          "instrumentType",
+          "exchangeMic",
+          "quoteCcy",
+          "activityType",
+          "currency",
+          "accountId",
+        ].some((field) => field in updates);
+        if (needsBackendValidation) {
+          const nextDrafts = draftActivities.map((draft) =>
+            draft.rowIndex === rowIndex ? ({ ...draft, ...updates } as DraftActivity) : draft,
+          );
+          void validateDraftsWithBackend(nextDrafts);
+        }
       } else {
         dispatch(updateDraft(rowIndex, updates));
       }
     },
-    [dispatch, draftActivities],
+    [dispatch, draftActivities, validateDraftsWithBackend],
   );
 
   const handleBulkSkip = useCallback(

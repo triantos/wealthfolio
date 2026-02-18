@@ -146,6 +146,18 @@ impl AssetRepositoryTrait for MockAssetRepository {
         Ok(())
     }
 
+    async fn update_provider_config(
+        &self,
+        _asset_id: &str,
+        _config: serde_json::Value,
+    ) -> Result<Asset> {
+        unimplemented!()
+    }
+
+    async fn update_name(&self, _asset_id: &str, _name: &str) -> Result<()> {
+        unimplemented!()
+    }
+
     async fn deactivate(&self, _asset_id: &str) -> Result<()> {
         Ok(())
     }
@@ -473,6 +485,13 @@ impl QuoteServiceTrait for MockMarketDataRepository {
 
     async fn get_asset_profile(&self, _asset: &Asset) -> Result<ProviderProfile> {
         unimplemented!()
+    }
+
+    async fn fetch_bond_details(
+        &self,
+        _isin: &str,
+    ) -> Option<crate::assets::BondSpec> {
+        None
     }
 
     async fn fetch_quotes_from_provider(
@@ -859,6 +878,7 @@ fn create_test_position(
         created_at: Utc::now(),
         last_updated: Utc::now(),
         is_alternative: false,
+        contract_multiplier: Decimal::ONE,
     }
 }
 
