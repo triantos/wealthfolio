@@ -8,8 +8,8 @@ use crate::context::ServiceContext;
 use crate::events::{BROKER_SYNC_COMPLETE, BROKER_SYNC_ERROR, BROKER_SYNC_START};
 use wealthfolio_connect::{
     broker::BrokerApiClient, fetch_subscription_plans_public, BrokerAccount, BrokerConnection,
-    PlansResponse, Platform, SyncConfig, SyncOrchestrator, SyncProgressPayload, SyncProgressReporter,
-    SyncResult, UserInfo,
+    PlansResponse, Platform, SyncConfig, SyncOrchestrator, SyncProgressPayload,
+    SyncProgressReporter, SyncResult, UserInfo,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

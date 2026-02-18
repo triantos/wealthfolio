@@ -14,8 +14,8 @@ use wealthfolio_device_sync::{ApiRetryClass, SyncPushEventRequest, SyncPushReque
 use super::{
     create_client, decrypt_sync_payload, encrypt_sync_payload, get_access_token,
     get_sync_identity_from_store, millis_until_rfc3339, parse_event_operation,
-    persist_device_config_from_identity, retry_class_code, sync_entity_name,
-    sync_operation_name, SyncCycleResult,
+    persist_device_config_from_identity, retry_class_code, sync_entity_name, sync_operation_name,
+    SyncCycleResult,
 };
 
 use super::snapshot::maybe_generate_snapshot_for_policy;
