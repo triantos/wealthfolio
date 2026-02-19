@@ -264,7 +264,7 @@ impl BoerseFrankfurtProvider {
         let salt = self.get_salt().await?;
 
         let url = format!(
-            "{}?isin={}&mic=XFRA&minDate={}&maxDate={}",
+            "{}?isin={}&mic=XFRA&minDate={}&maxDate={}&offset=0&limit=2000",
             BASE_URL, isin, min_date, max_date
         );
 
