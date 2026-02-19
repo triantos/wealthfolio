@@ -1322,6 +1322,16 @@ impl AssetServiceTrait for AssetService {
             };
 
             let normalized = self.new_asset_from_spec(spec);
+            let effective_instrument_type = normalized
+                .instrument_type
+                .as_ref()
+                .or(spec.instrument_type.as_ref());
+            // Only look up quote currency from providers for equities
+            let allow_provider_lookup = normalized.quote_mode == QuoteMode::Market
+                && matches!(
+                    effective_instrument_type,
+                    None | Some(InstrumentType::Equity)
+                );
             let (resolved_quote_ccy, _) = self
                 .resolve_quote_ccy(
                     normalized
@@ -1332,10 +1342,7 @@ impl AssetServiceTrait for AssetService {
                         .instrument_exchange_mic
                         .as_deref()
                         .or(spec.instrument_exchange_mic.as_deref()),
-                    normalized
-                        .instrument_type
-                        .as_ref()
-                        .or(spec.instrument_type.as_ref()),
+                    effective_instrument_type,
                     spec.quote_ccy_hint.as_deref(),
                     if existing_asset.quote_ccy.trim().is_empty() {
                         None
@@ -1343,7 +1350,7 @@ impl AssetServiceTrait for AssetService {
                         Some(existing_asset.quote_ccy.as_str())
                     },
                     Some(spec.quote_ccy.as_str()),
-                    normalized.quote_mode == QuoteMode::Market,
+                    allow_provider_lookup,
                 )
                 .await;
             let expected_quote_ccy = if existing_asset.quote_ccy.trim().is_empty() {
@@ -1430,10 +1437,11 @@ impl AssetServiceTrait for AssetService {
             let quote_mode = resolved_spec
                 .quote_mode
                 .unwrap_or_else(|| Self::default_quote_mode_for_kind(&resolved_spec.kind));
+            // Only look up quote currency from providers for equities
             let allow_provider_lookup = quote_mode == QuoteMode::Market
-                && !matches!(
+                && matches!(
                     resolved_spec.instrument_type.as_ref(),
-                    Some(InstrumentType::Crypto | InstrumentType::Fx)
+                    None | Some(InstrumentType::Equity)
                 );
             let symbol = resolved_spec
                 .instrument_symbol

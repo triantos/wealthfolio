@@ -1457,10 +1457,12 @@ impl ActivityService {
             let existing_asset_quote_ccy = self.existing_asset_quote_ccy_by_id(
                 activity.get_symbol_id().filter(|id| !id.trim().is_empty()),
             );
+            // Only look up quote currency from providers for equities;
+            // bonds, options, metals use the activity/account currency directly.
             let allow_provider_lookup = quote_mode != Some(QuoteMode::Manual)
-                && !matches!(
+                && matches!(
                     instrument_type.as_ref(),
-                    Some(InstrumentType::Crypto | InstrumentType::Fx)
+                    None | Some(InstrumentType::Equity)
                 );
             let (resolved_quote_ccy, _) = self
                 .resolve_quote_ccy(
@@ -1958,6 +1960,9 @@ impl ActivityServiceTrait for ActivityService {
                         ImportSymbolDisposition::ResolveAsset
                     )
                     && a.exchange_mic.is_none()
+                    // Only equities need exchange MIC resolution;
+                    // bonds, options, metals, crypto, and FX are identified without MICs.
+                    && matches!(a.instrument_type.as_deref(), None | Some("EQUITY") | Some("STOCK") | Some("ETF"))
             })
             .map(|a| {
                 let ccy = if a.currency.is_empty() {
@@ -2826,12 +2831,14 @@ impl ActivityServiceTrait for ActivityService {
                 let has_mic = a.get_exchange_mic().is_some();
                 let instrument_type_hint =
                     Self::parse_instrument_type_hint(a.get_instrument_type_hint());
-                let is_non_security_hint = matches!(
+                // Only equities need exchange MIC resolution;
+                // bonds, options, metals, crypto, and FX are identified without MICs.
+                let needs_mic = matches!(
                     instrument_type_hint,
-                    Some(InstrumentType::Crypto | InstrumentType::Fx)
+                    None | Some(InstrumentType::Equity)
                 );
                 let is_cash = symbol.starts_with("CASH:");
-                if !has_mic && !is_cash && !is_non_security_hint {
+                if !has_mic && !is_cash && needs_mic {
                     Some(symbol.to_string())
                 } else {
                     None
