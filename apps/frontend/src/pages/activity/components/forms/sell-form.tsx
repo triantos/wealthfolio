@@ -228,7 +228,7 @@ export function SellForm({
   const handleSubmit = form.handleSubmit(async (data) => {
     // Ensure currency is set (required by backend) — fall back to account currency
     if (!data.currency && accountId) {
-      data.currency = accounts.find((a) => a.value === accountId)?.currency;
+      data.currency = accounts.find((a) => a.value === accountId)?.currency ?? data.currency;
     }
     // For options: build OCC symbol from structured fields
     if (data.assetType === "option" && data.underlyingSymbol && data.strikePrice && data.expirationDate && data.optionType) {
