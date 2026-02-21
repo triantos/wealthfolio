@@ -129,6 +129,10 @@ async fn process_event_batch(events: &[DomainEvent], deps: Arc<QueueWorkerDeps>)
             enrichment_assets.len()
         );
 
+        deps.event_bus.publish(crate::events::ServerEvent::new(
+            crate::events::ASSET_ENRICHMENT_START,
+        ));
+
         match deps.asset_service.enrich_assets(enrichment_assets).await {
             Ok((enriched, skipped, failed)) => {
                 tracing::info!(
@@ -137,9 +141,21 @@ async fn process_event_batch(events: &[DomainEvent], deps: Arc<QueueWorkerDeps>)
                     skipped,
                     failed
                 );
+                deps.event_bus.publish(crate::events::ServerEvent::with_payload(
+                    crate::events::ASSET_ENRICHMENT_COMPLETE,
+                    serde_json::json!({
+                        "enriched": enriched,
+                        "skipped": skipped,
+                        "failed": failed,
+                    }),
+                ));
             }
             Err(e) => {
                 tracing::warn!("Asset enrichment failed: {}", e);
+                deps.event_bus.publish(crate::events::ServerEvent::with_payload(
+                    crate::events::ASSET_ENRICHMENT_ERROR,
+                    serde_json::json!(e.to_string()),
+                ));
             }
         }
     }

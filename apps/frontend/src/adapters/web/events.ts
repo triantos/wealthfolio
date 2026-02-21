@@ -183,6 +183,19 @@ export const listenDeepLink = <T>(_handler: EventCallback<T>): Promise<UnlistenF
   return Promise.resolve(noopUnlisten);
 };
 
+// Asset enrichment events
+export const listenAssetEnrichmentStart = <T>(handler: EventCallback<T>): Promise<UnlistenFn> => {
+  return portfolioEventBridge.listen("asset:enrichment-start", handler);
+};
+
+export const listenAssetEnrichmentComplete = <T>(handler: EventCallback<T>): Promise<UnlistenFn> => {
+  return portfolioEventBridge.listen("asset:enrichment-complete", handler);
+};
+
+export const listenAssetEnrichmentError = <T>(handler: EventCallback<T>): Promise<UnlistenFn> => {
+  return portfolioEventBridge.listen("asset:enrichment-error", handler);
+};
+
 // Broker sync events
 export const listenBrokerSyncStart = <T>(handler: EventCallback<T>): Promise<UnlistenFn> => {
   return portfolioEventBridge.listen("broker:sync-start", handler);
