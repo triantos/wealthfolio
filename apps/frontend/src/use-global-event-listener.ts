@@ -61,9 +61,8 @@ const useGlobalEventListener = () => {
     let cleanupFn: (() => void) | undefined;
 
     const handleMarketSyncStart = () => {
-      if (isMobileViewportRef.current && syncContextRef.current) {
-        syncContextRef.current.setMarketSyncing();
-      } else {
+      syncContextRef.current?.setMarketSyncing();
+      if (!isMobileViewportRef.current) {
         toast.loading("Syncing market data...", {
           id: TOAST_IDS.marketSyncStart,
           duration: 3000,
@@ -74,9 +73,8 @@ const useGlobalEventListener = () => {
     const handleMarketSyncComplete = (event: { payload: { failed_syncs: [string, string][] } }) => {
       const { failed_syncs } = event.payload || { failed_syncs: [] };
 
-      if (isMobileViewportRef.current && syncContextRef.current) {
-        syncContextRef.current.setIdle();
-      } else {
+      syncContextRef.current?.setIdle();
+      if (!isMobileViewportRef.current) {
         toast.dismiss(TOAST_IDS.marketSyncStart);
       }
 
@@ -104,9 +102,8 @@ const useGlobalEventListener = () => {
 
     const handleMarketSyncError = (event: { payload: string }) => {
       const errorMsg = event.payload || "Unknown error";
-      if (isMobileViewportRef.current && syncContextRef.current) {
-        syncContextRef.current.setIdle();
-      } else {
+      syncContextRef.current?.setIdle();
+      if (!isMobileViewportRef.current) {
         toast.dismiss(TOAST_IDS.marketSyncStart);
       }
       toast.error("Market Data Sync Failed", {
@@ -117,9 +114,8 @@ const useGlobalEventListener = () => {
     };
 
     const handlePortfolioUpdateStart = () => {
-      if (isMobileViewportRef.current && syncContextRef.current) {
-        syncContextRef.current.setPortfolioCalculating();
-      } else {
+      syncContextRef.current?.setPortfolioCalculating();
+      if (!isMobileViewportRef.current) {
         toast.loading("Calculating portfolio performance...", {
           id: TOAST_IDS.portfolioUpdateStart,
           duration: 2000,
@@ -128,9 +124,8 @@ const useGlobalEventListener = () => {
     };
 
     const handlePortfolioUpdateError = (error: string) => {
-      if (isMobileViewportRef.current && syncContextRef.current) {
-        syncContextRef.current.setIdle();
-      } else {
+      syncContextRef.current?.setIdle();
+      if (!isMobileViewportRef.current) {
         toast.dismiss(TOAST_IDS.portfolioUpdateStart);
       }
       toast.error("Portfolio Update Failed", {
@@ -143,9 +138,8 @@ const useGlobalEventListener = () => {
     };
 
     const handlePortfolioUpdateComplete = () => {
-      if (isMobileViewportRef.current && syncContextRef.current) {
-        syncContextRef.current.setIdle();
-      } else {
+      syncContextRef.current?.setIdle();
+      if (!isMobileViewportRef.current) {
         toast.dismiss(TOAST_IDS.portfolioUpdateStart);
       }
       // Scope invalidation to portfolio-affected queries only.
@@ -182,6 +176,7 @@ const useGlobalEventListener = () => {
     };
 
     const handleAssetEnrichmentStart = () => {
+      syncContextRef.current?.setEnrichingAssets();
       toast.loading("Fetching asset metadata...", {
         id: TOAST_IDS.assetEnrichmentStart,
         duration: 30000,
@@ -202,6 +197,7 @@ const useGlobalEventListener = () => {
 
     const handleAssetEnrichmentError = (event: { payload: string }) => {
       const errorMsg = event.payload || "Unknown error";
+      syncContextRef.current?.setIdle();
       toast.dismiss(TOAST_IDS.assetEnrichmentStart);
       toast.error("Asset Metadata Fetch Failed", {
         description: `${errorMsg}. Portfolio values may be incomplete.`,

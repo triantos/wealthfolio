@@ -7,6 +7,7 @@ import {
   ChartTooltipContent,
 } from "@wealthfolio/ui/components/ui/chart";
 import { EmptyPlaceholder } from "@wealthfolio/ui/components/ui/empty-placeholder";
+import { usePortfolioSyncOptional } from "@/context/portfolio-sync-context";
 import { Icons } from "@wealthfolio/ui/components/ui/icons";
 import { Skeleton } from "@wealthfolio/ui/components/ui/skeleton";
 import { useBalancePrivacy } from "@/hooks/use-balance-privacy";
@@ -60,6 +61,8 @@ const IncomePeriodSelector: React.FC<{
 export default function IncomePage() {
   const [selectedPeriod, setSelectedPeriod] = useState<"TOTAL" | "YTD" | "LAST_YEAR">("TOTAL");
   const { isBalanceHidden } = useBalancePrivacy();
+  const syncContext = usePortfolioSyncOptional();
+  const isPipelineActive = syncContext != null && syncContext.status !== "idle";
 
   const {
     data: incomeData,
@@ -82,6 +85,17 @@ export default function IncomePage() {
   const totalSummary = incomeData.find((summary) => summary.period === "TOTAL");
 
   if (!periodSummary || !totalSummary) {
+    if (isPipelineActive) {
+      return (
+        <div className="flex items-center justify-center py-16">
+          <EmptyPlaceholder
+            icon={<Icons.Loader className="h-10 w-10 animate-spin" />}
+            title="Preparing your portfolio"
+            description={syncContext?.message || "Processing..."}
+          />
+        </div>
+      );
+    }
     return (
       <>
         <div className="pointer-events-auto fixed right-2 top-4 z-20 lg:right-4">

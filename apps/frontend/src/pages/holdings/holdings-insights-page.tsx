@@ -9,6 +9,7 @@ import { PORTFOLIO_ACCOUNT_ID, isAlternativeAssetKind, type AssetKind } from "@/
 import { useSettingsContext } from "@/lib/settings-provider";
 import type { TaxonomyAllocation } from "@/lib/types";
 import { useNavigate } from "react-router-dom";
+import { usePortfolioSyncOptional } from "@/context/portfolio-sync-context";
 import { AllocationDetailSheet } from "./components/allocation-detail-sheet";
 import { CashHoldingsWidget } from "./components/cash-holdings-widget";
 import { CompactAllocationStrip } from "./components/compact-allocation-strip";
@@ -101,7 +102,9 @@ export const HoldingsInsightsPage = ({ accountId: accountIdProp }: HoldingsInsig
     return { cashHoldings: cash, nonCashHoldings: nonCash };
   }, [holdings]);
 
-  const hasNoHoldingsAtAll = !isLoading && (!holdings || holdings.length === 0);
+  const syncContext = usePortfolioSyncOptional();
+  const isPipelineActive = syncContext != null && syncContext.status !== "idle";
+  const hasNoHoldingsAtAll = !isLoading && !isPipelineActive && (!holdings || holdings.length === 0);
 
   const hasRiskAllocations =
     allocations?.riskCategory && allocations.riskCategory.categories.length > 0;
@@ -136,7 +139,20 @@ export const HoldingsInsightsPage = ({ accountId: accountIdProp }: HoldingsInsig
     </div>
   );
 
+  const renderProcessingState = () => (
+    <div className="flex items-center justify-center py-16">
+      <EmptyPlaceholder
+        icon={<Icons.Loader className="text-muted-foreground h-10 w-10 animate-spin" />}
+        title="Preparing your portfolio"
+        description={syncContext?.message || "Processing..."}
+      />
+    </div>
+  );
+
   const renderAnalyticsView = () => {
+    if (!isLoading && isPipelineActive && (!holdings || holdings.length === 0)) {
+      return renderProcessingState();
+    }
     if (hasNoHoldingsAtAll) {
       return renderEmptyState();
     }

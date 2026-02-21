@@ -12,6 +12,7 @@ import { PerformanceChartMobile } from "@/components/performance-chart-mobile";
 import { PERFORMANCE_CHART_COLORS } from "@/components/performance-chart-colors";
 import { EmptyPlaceholder } from "@wealthfolio/ui/components/ui/empty-placeholder";
 import { usePersistentState } from "@/hooks/use-persistent-state";
+import { usePortfolioSyncOptional } from "@/context/portfolio-sync-context";
 import { useIsMobileViewport } from "@/hooks/use-platform";
 import { PORTFOLIO_ACCOUNT_ID } from "@/lib/constants";
 import { DateRange, PerformanceMetrics, ReturnData, TrackedItem } from "@/lib/types";
@@ -77,6 +78,9 @@ function PerformanceContent({
   errorMessages: string[];
   isMobile: boolean;
 }) {
+  const syncContext = usePortfolioSyncOptional();
+  const isPipelineActive = syncContext != null && syncContext.status !== "idle";
+
   return (
     <div className="relative flex h-full w-full flex-col">
       {chartData && chartData.length > 0 && (
@@ -89,7 +93,16 @@ function PerformanceContent({
         </div>
       )}
 
-      {!chartData?.length && !isLoading && !hasErrors && (
+      {!chartData?.length && !isLoading && !hasErrors && isPipelineActive && (
+        <EmptyPlaceholder
+          className="mx-auto flex max-w-[420px] items-center justify-center"
+          icon={<Icons.Loader className="h-10 w-10 animate-spin" />}
+          title="Preparing your portfolio"
+          description={syncContext?.message || "Processing..."}
+        />
+      )}
+
+      {!chartData?.length && !isLoading && !hasErrors && !isPipelineActive && (
         <EmptyPlaceholder
           className="mx-auto flex max-w-[420px] items-center justify-center"
           icon={<Icons.BarChart className="h-10 w-10" />}

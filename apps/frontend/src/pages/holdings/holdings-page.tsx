@@ -16,6 +16,7 @@ import {
   useUnlinkLiability,
 } from "@/hooks/use-alternative-assets";
 import { usePersistentState } from "@/hooks/use-persistent-state";
+import { usePortfolioSyncOptional } from "@/context/portfolio-sync-context";
 import {
   PORTFOLIO_ACCOUNT_ID,
   HOLDING_CATEGORY_FILTERS,
@@ -317,7 +318,11 @@ export const HoldingsPage = () => {
   const isDataLoading = isLoading || isAccountsLoading || isAlternativeHoldingsLoading;
 
   // Empty state checks
-  const hasNoInvestments = !isDataLoading && (!nonCashHoldings || nonCashHoldings.length === 0);
+  const syncContext = usePortfolioSyncOptional();
+  const isPipelineActive = syncContext != null && syncContext.status !== "idle";
+  const hasNoData = !nonCashHoldings || nonCashHoldings.length === 0;
+  const showProcessingState = !isDataLoading && isPipelineActive && hasNoData;
+  const hasNoInvestments = !isDataLoading && !isPipelineActive && hasNoData;
   const hasNoAssets = !isDataLoading && assetsHoldings.length === 0;
   const hasNoLiabilities = !isDataLoading && liabilitiesHoldings.length === 0;
 
@@ -332,6 +337,14 @@ export const HoldingsPage = () => {
           isLoading={isDataLoading}
           onClose={() => setIsEditMode(false)}
         />
+      ) : showProcessingState ? (
+        <div className="flex items-center justify-center py-16">
+          <EmptyPlaceholder
+            icon={<Icons.Loader className="text-muted-foreground h-10 w-10 animate-spin" />}
+            title="Preparing your portfolio"
+            description={syncContext?.message || "Processing..."}
+          />
+        </div>
       ) : hasNoInvestments ? (
         <div className="flex items-center justify-center py-16">
           <EmptyPlaceholder
