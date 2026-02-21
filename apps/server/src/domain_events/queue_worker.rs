@@ -119,7 +119,33 @@ pub async fn event_queue_worker(
 async fn process_event_batch(events: &[DomainEvent], deps: Arc<QueueWorkerDeps>) {
     tracing::info!("Processing batch of {} domain event(s)", events.len());
 
-    // 1. Plan and trigger portfolio job
+    // 1. Plan and run asset enrichment FIRST so that bond metadata (coupon rate,
+    //    maturity date, etc.) is available before the portfolio job tries to
+    //    sync quotes and calculate snapshots.
+    let enrichment_assets = plan_asset_enrichment(events);
+    if !enrichment_assets.is_empty() {
+        tracing::info!(
+            "Triggering asset enrichment for {} asset(s)",
+            enrichment_assets.len()
+        );
+
+        match deps.asset_service.enrich_assets(enrichment_assets).await {
+            Ok((enriched, skipped, failed)) => {
+                tracing::info!(
+                    "Asset enrichment complete: {} enriched, {} skipped, {} failed",
+                    enriched,
+                    skipped,
+                    failed
+                );
+            }
+            Err(e) => {
+                tracing::warn!("Asset enrichment failed: {}", e);
+            }
+        }
+    }
+
+    // 2. Plan and trigger portfolio job (quote sync + snapshot calculation).
+    //    Runs after enrichment so bond quotes can be calculated correctly.
     if let Some(config) = plan_portfolio_job(events) {
         tracing::info!(
             "Triggering portfolio job for accounts: {:?}, market_sync: {:?}",
@@ -130,32 +156,6 @@ async fn process_event_batch(events: &[DomainEvent], deps: Arc<QueueWorkerDeps>)
         // Run the portfolio job directly (not spawned) so that is_processing
         // guard properly tracks completion and prevents concurrent jobs
         run_portfolio_job(deps.clone(), config).await;
-    }
-
-    // 2. Plan and trigger asset enrichment
-    let enrichment_assets = plan_asset_enrichment(events);
-    if !enrichment_assets.is_empty() {
-        tracing::info!(
-            "Triggering asset enrichment for {} asset(s)",
-            enrichment_assets.len()
-        );
-
-        let asset_service = deps.asset_service.clone();
-        tokio::spawn(async move {
-            match asset_service.enrich_assets(enrichment_assets).await {
-                Ok((enriched, skipped, failed)) => {
-                    tracing::info!(
-                        "Asset enrichment complete: {} enriched, {} skipped, {} failed",
-                        enriched,
-                        skipped,
-                        failed
-                    );
-                }
-                Err(e) => {
-                    tracing::warn!("Asset enrichment failed: {}", e);
-                }
-            }
-        });
     }
 
     // 3. Plan and trigger broker sync
