@@ -365,10 +365,14 @@ impl MarketDataProvider for UsTreasuryCalcProvider {
     }
 
     fn rate_limit(&self) -> RateLimit {
+        // Yield curves are fetched once per year and cached; bond price
+        // calculations are pure local math.  Only TreasuryDirect enrichment
+        // hits the network and it has no strict rate limit, so we can be
+        // much more aggressive here.
         RateLimit {
-            requests_per_minute: 10,
-            max_concurrency: 1,
-            min_delay: Duration::from_secs(5),
+            requests_per_minute: 120,
+            max_concurrency: 5,
+            min_delay: Duration::from_millis(500),
         }
     }
 

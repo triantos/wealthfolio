@@ -2222,8 +2222,19 @@ impl ActivityServiceTrait for ActivityService {
             if activity.quote_ccy.is_none() {
                 let is_metal = effective_instrument_type.as_ref()
                     == Some(&InstrumentType::Metal);
+                let is_bond = effective_instrument_type.as_ref()
+                    == Some(&InstrumentType::Bond);
                 if is_metal {
                     activity.quote_ccy = Some("USD".to_string());
+                } else if is_bond {
+                    // Bonds are denominated in a known currency (USD for US Treasuries).
+                    // Use the activity currency directly — no provider lookup needed.
+                    let bond_ccy = if activity.currency.trim().is_empty() {
+                        account_currency.clone()
+                    } else {
+                        activity.currency.clone()
+                    };
+                    activity.quote_ccy = Some(bond_ccy);
                 } else {
                     let terminal_fallback = if activity.currency.trim().is_empty() {
                         account_currency.as_str()
