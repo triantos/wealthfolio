@@ -118,3 +118,22 @@ be added later via the asset edit sheet.
 Bond fields are integrated into the buy/sell forms via the `assetType` discriminator,
 with labels that adapt ("Face Value" / "Price % of Par" instead of "Shares" / "Price").
 Bond-specific fields in `apps/frontend/src/pages/activity/components/forms/fields/`.
+
+## Performance Tips
+
+### Treasury-Heavy Portfolios
+
+On first sync, bonds without a pinned provider go through the full provider
+fallback chain (OpenFIGI → US Treasury Calc → Boerse Frankfurt, by priority).
+For non-Treasury bonds, US Treasury Calc fails quickly, but Boerse Frankfurt
+network calls add latency for each bond.
+
+If your portfolio is mostly US Treasuries, you can speed up the initial sync by
+configuring the provider priority to try US Treasury Calc before Boerse Frankfurt.
+After the first successful sync, each bond is pinned to its winning provider
+(see "Provider Pinning" above), so subsequent syncs are fast regardless of
+priority order.
+
+Note: US Treasury Calc only supports `US912`-prefix ISINs and requires bond
+metadata (coupon rate, maturity date) from enrichment. It will fail for
+non-Treasury bonds, so it should not be the only provider configured.
