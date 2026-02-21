@@ -196,6 +196,10 @@ export const listenAssetEnrichmentError = <T>(handler: EventCallback<T>): Promis
   return portfolioEventBridge.listen("asset:enrichment-error", handler);
 };
 
+export const listenAssetEnrichmentProgress = <T>(handler: EventCallback<T>): Promise<UnlistenFn> => {
+  return portfolioEventBridge.listen("asset:enrichment-progress", handler);
+};
+
 // Broker sync events
 export const listenBrokerSyncStart = <T>(handler: EventCallback<T>): Promise<UnlistenFn> => {
   return portfolioEventBridge.listen("broker:sync-start", handler);

@@ -90,6 +90,11 @@ export async function listenAssetEnrichmentError<T>(handler: EventCallback<T>): 
   return adaptUnlisten(unlisten);
 }
 
+export async function listenAssetEnrichmentProgress<T>(handler: EventCallback<T>): Promise<UnlistenFn> {
+  const unlisten = await listen<T>("asset:enrichment-progress", adaptCallback(handler));
+  return adaptUnlisten(unlisten);
+}
+
 export async function listenBrokerSyncStart<T>(handler: EventCallback<T>): Promise<UnlistenFn> {
   const unlisten = await listen<T>("broker:sync-start", adaptCallback(handler));
   return adaptUnlisten(unlisten);

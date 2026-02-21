@@ -129,34 +129,61 @@ async fn process_event_batch(events: &[DomainEvent], deps: Arc<QueueWorkerDeps>)
             enrichment_assets.len()
         );
 
-        deps.event_bus.publish(crate::events::ServerEvent::new(
+        let total = enrichment_assets.len();
+        deps.event_bus.publish(crate::events::ServerEvent::with_payload(
             crate::events::ASSET_ENRICHMENT_START,
+            serde_json::json!({ "total": total }),
         ));
 
-        match deps.asset_service.enrich_assets(enrichment_assets).await {
-            Ok((enriched, skipped, failed)) => {
-                tracing::info!(
-                    "Asset enrichment complete: {} enriched, {} skipped, {} failed",
-                    enriched,
-                    skipped,
-                    failed
-                );
-                deps.event_bus.publish(crate::events::ServerEvent::with_payload(
-                    crate::events::ASSET_ENRICHMENT_COMPLETE,
-                    serde_json::json!({
-                        "enriched": enriched,
-                        "skipped": skipped,
-                        "failed": failed,
-                    }),
-                ));
+        let mut total_enriched: usize = 0;
+        let mut total_skipped: usize = 0;
+        let mut total_failed: usize = 0;
+        let mut had_error = false;
+        let chunk_size = 5;
+
+        for chunk in enrichment_assets.chunks(chunk_size) {
+            match deps.asset_service.enrich_assets(chunk.to_vec()).await {
+                Ok((enriched, skipped, failed)) => {
+                    total_enriched += enriched;
+                    total_skipped += skipped;
+                    total_failed += failed;
+
+                    let completed = total_enriched + total_skipped + total_failed;
+                    deps.event_bus.publish(crate::events::ServerEvent::with_payload(
+                        crate::events::ASSET_ENRICHMENT_PROGRESS,
+                        serde_json::json!({
+                            "completed": completed,
+                            "total": total,
+                        }),
+                    ));
+                }
+                Err(e) => {
+                    tracing::warn!("Asset enrichment chunk failed: {}", e);
+                    had_error = true;
+                    deps.event_bus.publish(crate::events::ServerEvent::with_payload(
+                        crate::events::ASSET_ENRICHMENT_ERROR,
+                        serde_json::json!(e.to_string()),
+                    ));
+                    break;
+                }
             }
-            Err(e) => {
-                tracing::warn!("Asset enrichment failed: {}", e);
-                deps.event_bus.publish(crate::events::ServerEvent::with_payload(
-                    crate::events::ASSET_ENRICHMENT_ERROR,
-                    serde_json::json!(e.to_string()),
-                ));
-            }
+        }
+
+        if !had_error {
+            tracing::info!(
+                "Asset enrichment complete: {} enriched, {} skipped, {} failed",
+                total_enriched,
+                total_skipped,
+                total_failed
+            );
+            deps.event_bus.publish(crate::events::ServerEvent::with_payload(
+                crate::events::ASSET_ENRICHMENT_COMPLETE,
+                serde_json::json!({
+                    "enriched": total_enriched,
+                    "skipped": total_skipped,
+                    "failed": total_failed,
+                }),
+            ));
         }
     }
 

@@ -19,6 +19,7 @@ import {
   listenAssetEnrichmentStart,
   listenAssetEnrichmentComplete,
   listenAssetEnrichmentError,
+  listenAssetEnrichmentProgress,
   listenBrokerSyncComplete,
   listenBrokerSyncError,
   listenDatabaseRestored,
@@ -191,6 +192,14 @@ const useGlobalEventListener = () => {
       toast.dismiss(TOAST_IDS.assetEnrichmentStart);
     };
 
+    const handleAssetEnrichmentProgress = (event: { payload: { completed: number; total: number } }) => {
+      const { completed, total } = event.payload;
+      toast.loading(`Fetching asset metadata... (${completed}/${total})`, {
+        id: TOAST_IDS.assetEnrichmentStart,
+        duration: 30000,
+      });
+    };
+
     const handleAssetEnrichmentError = (event: { payload: string }) => {
       const errorMsg = event.payload || "Unknown error";
       toast.dismiss(TOAST_IDS.assetEnrichmentStart);
@@ -325,6 +334,7 @@ const useGlobalEventListener = () => {
       const unlistenAssetEnrichmentStart = await listenAssetEnrichmentStart(handleAssetEnrichmentStart);
       const unlistenAssetEnrichmentComplete = await listenAssetEnrichmentComplete(handleAssetEnrichmentComplete);
       const unlistenAssetEnrichmentError = await listenAssetEnrichmentError(handleAssetEnrichmentError);
+      const unlistenAssetEnrichmentProgress = await listenAssetEnrichmentProgress(handleAssetEnrichmentProgress);
       const unlistenDatabaseRestored = await listenDatabaseRestored(handleDatabaseRestored);
       const unlistenBrokerSyncComplete = await listenBrokerSyncComplete(handleBrokerSyncComplete);
       const unlistenBrokerSyncError = await listenBrokerSyncError(handleBrokerSyncError);
@@ -339,6 +349,7 @@ const useGlobalEventListener = () => {
         unlistenAssetEnrichmentStart();
         unlistenAssetEnrichmentComplete();
         unlistenAssetEnrichmentError();
+        unlistenAssetEnrichmentProgress();
         unlistenDatabaseRestored();
         unlistenBrokerSyncComplete();
         unlistenBrokerSyncError();

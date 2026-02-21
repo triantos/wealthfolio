@@ -288,6 +288,7 @@ export {
   listenAssetEnrichmentStart,
   listenAssetEnrichmentComplete,
   listenAssetEnrichmentError,
+  listenAssetEnrichmentProgress,
   listenBrokerSyncStart,
   listenBrokerSyncComplete,
   listenBrokerSyncError,
