@@ -1,7 +1,8 @@
 use crate::errors::{CalculatorError, Error as CoreError, Result as CoreResult};
 use crate::fx::currency::normalize_currency_code;
 use crate::fx::FxServiceTrait;
-use crate::portfolio::snapshot::SnapshotServiceTrait;
+use crate::lots::LotRepositoryTrait;
+use crate::portfolio::snapshot::{Position, SnapshotServiceTrait};
 use crate::portfolio::valuation::valuation_calculator::calculate_valuation;
 use crate::portfolio::valuation::valuation_model::DailyAccountValuation;
 use crate::portfolio::valuation::ValuationRepositoryTrait;
@@ -10,6 +11,7 @@ use crate::utils::time_utils;
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use log::{debug, error, warn};
+use rust_decimal::Decimal;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
@@ -87,6 +89,7 @@ pub struct ValuationService {
     base_currency: Arc<RwLock<String>>,
     valuation_repository: Arc<dyn ValuationRepositoryTrait>,
     snapshot_service: Arc<dyn SnapshotServiceTrait>,
+    lot_repository: Arc<dyn LotRepositoryTrait>,
     quote_service: Arc<dyn QuoteServiceTrait>,
     fx_service: Arc<dyn FxServiceTrait>,
 }
@@ -96,15 +99,17 @@ impl ValuationService {
         base_currency: Arc<RwLock<String>>,
         valuation_repository: Arc<dyn ValuationRepositoryTrait>,
         snapshot_service: Arc<dyn SnapshotServiceTrait>,
+        lot_repository: Arc<dyn LotRepositoryTrait>,
         quote_service: Arc<dyn QuoteServiceTrait>,
         fx_service: Arc<dyn FxServiceTrait>,
     ) -> Self {
         Self {
             base_currency,
+            valuation_repository,
             snapshot_service,
+            lot_repository,
             quote_service,
             fx_service,
-            valuation_repository,
         }
     }
 
@@ -276,12 +281,83 @@ impl ValuationServiceTrait for ValuationService {
             map
         };
 
+        // Security positions: fetch all lots for this account once so we can filter per date
+        // in memory rather than issuing one query per day in the range.
+        let all_lots = self
+            .lot_repository
+            .get_all_lots_for_account(account_id)
+            .await?;
+
         let newly_calculated_valuations: Vec<DailyAccountValuation> = snapshots_to_process
             .into_iter()
             .filter_map(|holdings_snapshot| {
                 let current_date = holdings_snapshot.snapshot_date;
                 let account_id_clone = account_id.to_string();
                 let base_curr_clone = base_curr.clone();
+                let date_str = current_date.format("%Y-%m-%d").to_string();
+
+                // Build security positions from lots active on current_date.
+                // NOTE: currency, is_alternative, and contract_multiplier are still read from
+                // the snapshot's position entries because the lot table does not store currency
+                // (it's redundant with assets.quote_ccy). This snapshot dependency will be
+                // removed once ValuationService has direct access to the asset repository.
+                let mut aggregated: HashMap<String, (Decimal, Decimal)> = HashMap::new();
+                for lot in &all_lots {
+                    if lot.open_date.as_str() > date_str.as_str() {
+                        continue;
+                    }
+                    if lot.is_closed {
+                        let closed_before_or_on_date = lot
+                            .close_date
+                            .as_deref()
+                            .map_or(true, |d| d <= date_str.as_str());
+                        if closed_before_or_on_date {
+                            continue;
+                        }
+                    }
+                    let qty = lot.remaining_quantity.parse::<Decimal>().unwrap_or_default();
+                    let cost = lot.total_cost_basis.parse::<Decimal>().unwrap_or_default();
+                    aggregated
+                        .entry(lot.asset_id.clone())
+                        .and_modify(|(q, c)| {
+                            *q += qty;
+                            *c += cost;
+                        })
+                        .or_insert((qty, cost));
+                }
+
+                let positions_from_lots: HashMap<String, Position> = aggregated
+                    .into_iter()
+                    .filter(|(_, (qty, _))| !qty.is_zero())
+                    .map(|(asset_id, (quantity, total_cost_basis))| {
+                        let (currency, is_alternative, contract_multiplier) =
+                            holdings_snapshot.positions.get(&asset_id).map_or(
+                                (String::new(), false, Decimal::ONE),
+                                |p| (p.currency.clone(), p.is_alternative, p.contract_multiplier),
+                            );
+                        let average_cost = if quantity > Decimal::ZERO {
+                            total_cost_basis / quantity
+                        } else {
+                            Decimal::ZERO
+                        };
+                        let mut pos = Position::new(
+                            holdings_snapshot.account_id.clone(),
+                            asset_id.clone(),
+                            currency,
+                            chrono::Utc::now(),
+                        );
+                        pos.quantity = quantity;
+                        pos.total_cost_basis = total_cost_basis;
+                        pos.average_cost = average_cost;
+                        pos.is_alternative = is_alternative;
+                        pos.contract_multiplier = contract_multiplier;
+                        (asset_id, pos)
+                    })
+                    .collect();
+
+                // Clone snapshot and replace positions with lot-derived data.
+                let mut snapshot_with_lot_positions = holdings_snapshot;
+                snapshot_with_lot_positions.positions = positions_from_lots;
 
                 let quotes_for_current_date =
                     quotes_by_date.get(&current_date).cloned().unwrap_or_default();
@@ -292,15 +368,11 @@ impl ValuationServiceTrait for ValuationService {
                     .unwrap_or_default();
 
                 // Check for assets missing quotes that SHOULD have quotes
-                // (i.e., they have quotes elsewhere, just not for this date - indicates a gap)
-                // Assets with NO quotes at all are skipped - they'll be valued at ZERO
-                // and the health check will detect them
-                let missing_quotes_with_gap: Vec<_> = holdings_snapshot
+                let missing_quotes_with_gap: Vec<_> = snapshot_with_lot_positions
                     .positions
                     .iter()
                     .filter(|(_, position)| !position.quantity.is_zero())
                     .map(|(symbol, _)| symbol)
-                    // Only flag as missing if the asset HAS quotes (somewhere) but not for this date
                     .filter(|symbol| assets_with_quotes.contains(*symbol))
                     .filter(|symbol| !quotes_for_current_date.contains_key(*symbol))
                     .cloned()
@@ -314,9 +386,7 @@ impl ValuationServiceTrait for ValuationService {
                     return None;
                 }
 
-                // Check if there are any positions that need quotes
-                // but only consider positions that HAVE quotes somewhere
-                let has_quotable_positions = holdings_snapshot
+                let has_quotable_positions = snapshot_with_lot_positions
                     .positions
                     .keys()
                     .any(|symbol| assets_with_quotes.contains(symbol));
@@ -328,7 +398,8 @@ impl ValuationServiceTrait for ValuationService {
                     );
                     return None;
                 }
-                let account_curr = &holdings_snapshot.currency;
+
+                let account_curr = &snapshot_with_lot_positions.currency;
                 if account_curr != &base_curr_clone
                     && !fx_for_current_date
                         .contains_key(&(account_curr.clone(), base_curr_clone.clone()))
@@ -341,7 +412,7 @@ impl ValuationServiceTrait for ValuationService {
                 }
 
                 match calculate_valuation(
-                    &holdings_snapshot,
+                    &snapshot_with_lot_positions,
                     &quotes_for_current_date,
                     &fx_for_current_date,
                     current_date,
