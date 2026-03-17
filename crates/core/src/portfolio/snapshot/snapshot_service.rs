@@ -9,6 +9,7 @@ use crate::constants::{DECIMAL_PRECISION, PORTFOLIO_TOTAL_ACCOUNT_ID};
 use crate::errors::{CalculatorError, Error, Result};
 use crate::events::{DomainEvent, DomainEventSink, NoOpDomainEventSink};
 use crate::fx::FxServiceTrait;
+use crate::lots::{check_lot_quantity_consistency, extract_lot_records, LotRepositoryTrait};
 use crate::portfolio::performance::{classify_flow_for_scope, FlowType, PerformanceScope};
 use crate::portfolio::snapshot::{
     AccountStateSnapshot, HoldingsCalculationWarning, Lot, Position, SnapshotSource,
@@ -119,6 +120,7 @@ pub struct SnapshotService {
     account_repository: Arc<dyn AccountRepositoryTrait>,
     activity_repository: Arc<dyn ActivityRepositoryTrait>,
     snapshot_repository: Arc<dyn SnapshotRepositoryTrait>,
+    lot_repository: Option<Arc<dyn LotRepositoryTrait>>,
     holdings_calculator: HoldingsCalculator,
     event_sink: Arc<dyn DomainEventSink>,
 }
@@ -171,6 +173,7 @@ impl SnapshotService {
             account_repository,
             activity_repository,
             snapshot_repository,
+            lot_repository: None,
             holdings_calculator,
             event_sink: Arc::new(NoOpDomainEventSink),
         }
@@ -189,6 +192,15 @@ impl SnapshotService {
     /// Sets the domain event sink for emitting HoldingsChanged events.
     pub fn with_event_sink(mut self, event_sink: Arc<dyn DomainEventSink>) -> Self {
         self.event_sink = event_sink;
+        self
+    }
+
+    /// Attaches a lot repository so that lot rows are written alongside JSON
+    /// snapshots on every recalculation. When set, the service writes lot rows
+    /// for every non-TOTAL account after each holdings recalculation and logs
+    /// any quantity mismatches at ERROR severity.
+    pub fn with_lot_repository(mut self, lot_repository: Arc<dyn LotRepositoryTrait>) -> Self {
+        self.lot_repository = Some(lot_repository);
         self
     }
 
@@ -286,7 +298,7 @@ impl SnapshotService {
             return Ok(0);
         }
 
-        let (_final_holdings_states, keyframes_to_save, calculation_warnings) = self
+        let (final_holdings_states, keyframes_to_save, calculation_warnings) = self
             .calculate_daily_holdings_snapshots(
                 &accounts_needing_calculation,
                 &activities_by_account_date,
@@ -354,6 +366,25 @@ impl SnapshotService {
                             &[], // empty = delete old snapshots, insert nothing
                         )
                         .await?;
+                }
+            }
+        }
+
+        // Write lot rows alongside the JSON snapshots so both representations can
+        // be compared during validation. Skips the virtual TOTAL account because it
+        // has no activities of its own and its positions are derived at query time.
+        if let Some(lot_repo) = &self.lot_repository {
+            for (acc_id, snapshot) in &final_holdings_states {
+                if acc_id == PORTFOLIO_TOTAL_ACCOUNT_ID {
+                    continue;
+                }
+                let lot_records = extract_lot_records(snapshot);
+                check_lot_quantity_consistency(snapshot, &lot_records);
+                if let Err(e) = lot_repo
+                    .replace_lots_for_account(acc_id, &lot_records)
+                    .await
+                {
+                    error!("Failed to write lot rows for account {}: {}", acc_id, e);
                 }
             }
         }
