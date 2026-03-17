@@ -43,6 +43,7 @@ use wealthfolio_storage_sqlite::{
     goals::GoalRepository,
     health::HealthDismissalRepository,
     limits::ContributionLimitRepository,
+    lots::LotsRepository,
     market_data::{MarketDataRepository, QuoteSyncStateRepository},
     portfolio::{snapshot::SnapshotRepository, valuation::ValuationRepository},
     settings::SettingsRepository,
@@ -182,6 +183,8 @@ pub async fn initialize_context(
         timezone.clone(),
     ));
 
+    let lots_repository = Arc::new(LotsRepository::new(pool.clone(), writer.clone()));
+
     let snapshot_service = Arc::new(
         SnapshotService::new_with_timezone(
             base_currency.clone(),
@@ -192,6 +195,7 @@ pub async fn initialize_context(
             asset_repository.clone(),
             fx_service.clone(),
         )
+        .with_lot_repository(lots_repository.clone())
         .with_event_sink(domain_event_sink.clone()),
     );
 
@@ -336,6 +340,7 @@ pub async fn initialize_context(
             income_service,
             snapshot_service,
             snapshot_repository,
+            lots_repository,
             app_sync_repository,
             holdings_service,
             allocation_service,
