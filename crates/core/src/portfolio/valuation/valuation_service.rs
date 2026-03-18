@@ -283,10 +283,14 @@ impl ValuationServiceTrait for ValuationService {
 
         // Security positions: fetch all lots for this account once so we can filter per date
         // in memory rather than issuing one query per day in the range.
-        let all_lots = self
-            .lot_repository
-            .get_all_lots_for_account(account_id)
-            .await?;
+        // For the TOTAL pseudo-account, aggregate lots across all accounts.
+        let all_lots = if account_id == "TOTAL" {
+            self.lot_repository.get_all_lots().await?
+        } else {
+            self.lot_repository
+                .get_all_lots_for_account(account_id)
+                .await?
+        };
 
         let newly_calculated_valuations: Vec<DailyAccountValuation> = snapshots_to_process
             .into_iter()
