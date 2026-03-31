@@ -1128,6 +1128,7 @@ fn create_total_valuation(
         cost_basis: net_contribution,
         net_contribution,
         calculated_at: Utc::now(),
+        alternative_market_value: Decimal::ZERO,
     }
 }
 
