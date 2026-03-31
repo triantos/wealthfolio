@@ -204,7 +204,10 @@ impl NetWorthService {
         }
 
         // Explicit liability items (individual breakdown)
-        for val in valuations.iter().filter(|v| v.category == AssetCategory::Liability) {
+        for val in valuations
+            .iter()
+            .filter(|v| v.category == AssetCategory::Liability)
+        {
             liability_breakdown.push(BreakdownItem {
                 category: "liability".to_string(),
                 name: val.name.clone().unwrap_or_else(|| val.asset_id.clone()),
@@ -813,7 +816,12 @@ mod tests {
         let valuations = vec![
             make_valuation("inv1", None, dec!(100000), AssetCategory::Investment),
             make_valuation("inv2", None, dec!(50000), AssetCategory::Investment),
-            make_valuation("cash1", Some("Cash (USD)"), dec!(25000), AssetCategory::Cash),
+            make_valuation(
+                "cash1",
+                Some("Cash (USD)"),
+                dec!(25000),
+                AssetCategory::Cash,
+            ),
         ];
 
         let (assets, liabilities) = NetWorthService::build_balance_sheet_sections(&valuations);
@@ -828,8 +836,18 @@ mod tests {
     fn liability_items_go_to_liabilities_section() {
         let valuations = vec![
             make_valuation("inv1", None, dec!(500000), AssetCategory::Investment),
-            make_valuation("loan1", Some("Mortgage"), dec!(200000), AssetCategory::Liability),
-            make_valuation("loan2", Some("Margin Loan"), dec!(50000), AssetCategory::Liability),
+            make_valuation(
+                "loan1",
+                Some("Mortgage"),
+                dec!(200000),
+                AssetCategory::Liability,
+            ),
+            make_valuation(
+                "loan2",
+                Some("Margin Loan"),
+                dec!(50000),
+                AssetCategory::Liability,
+            ),
         ];
 
         let (assets, liabilities) = NetWorthService::build_balance_sheet_sections(&valuations);
@@ -847,7 +865,12 @@ mod tests {
         let valuations = vec![
             make_valuation("inv1", None, dec!(100000), AssetCategory::Investment),
             make_valuation("cash1", Some("Cash (USD)"), dec!(5000), AssetCategory::Cash),
-            make_valuation("cash2", Some("Cash (CHF)"), dec!(-20000), AssetCategory::Cash),
+            make_valuation(
+                "cash2",
+                Some("Cash (CHF)"),
+                dec!(-20000),
+                AssetCategory::Cash,
+            ),
         ];
 
         let (assets, liabilities) = NetWorthService::build_balance_sheet_sections(&valuations);
@@ -868,8 +891,18 @@ mod tests {
     fn mixed_liabilities_and_negative_categories() {
         let valuations = vec![
             make_valuation("inv1", None, dec!(1000000), AssetCategory::Investment),
-            make_valuation("cash1", Some("Cash (CHF)"), dec!(-50000), AssetCategory::Cash),
-            make_valuation("loan1", Some("CHF Loan 4M"), dec!(4000000), AssetCategory::Liability),
+            make_valuation(
+                "cash1",
+                Some("Cash (CHF)"),
+                dec!(-50000),
+                AssetCategory::Cash,
+            ),
+            make_valuation(
+                "loan1",
+                Some("CHF Loan 4M"),
+                dec!(4000000),
+                AssetCategory::Liability,
+            ),
         ];
 
         let (assets, liabilities) = NetWorthService::build_balance_sheet_sections(&valuations);
@@ -885,7 +918,12 @@ mod tests {
         let valuations = vec![
             make_valuation("inv1", None, dec!(100000), AssetCategory::Investment),
             make_valuation("cash1", Some("Cash (USD)"), dec!(5000), AssetCategory::Cash),
-            make_valuation("cash2", Some("Cash (EUR)"), dec!(-5000), AssetCategory::Cash),
+            make_valuation(
+                "cash2",
+                Some("Cash (EUR)"),
+                dec!(-5000),
+                AssetCategory::Cash,
+            ),
         ];
 
         let (assets, liabilities) = NetWorthService::build_balance_sheet_sections(&valuations);
