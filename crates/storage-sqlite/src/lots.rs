@@ -279,11 +279,9 @@ impl LotRepositoryTrait for LotsRepository {
 
                 if known_ids.is_empty() {
                     // No lots produced — delete everything for this account
-                    diesel::delete(
-                        dsl::lots.filter(dsl::account_id.eq(&account_id)),
-                    )
-                    .execute(conn)
-                    .map_err(StorageError::from)?;
+                    diesel::delete(dsl::lots.filter(dsl::account_id.eq(&account_id)))
+                        .execute(conn)
+                        .map_err(StorageError::from)?;
                 } else {
                     diesel::delete(
                         dsl::lots
