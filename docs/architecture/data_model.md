@@ -480,11 +480,16 @@ work, but the v1 schema should leave room for them:
   multi-entity portfolios (family trusts, corporate holdings). Phase
   D.1 uses a single `filer_jurisdiction` setting as a placeholder;
   promotion path is a new table with a backfilled default "Self" entity.
-- **Tax-lot identification methods per jurisdiction** — US uses FIFO
-  (or specific-identification on election); Canada uses ACB (average
-  cost). The lots table stores FIFO-compatible data today; jurisdiction-
-  aware basis methods would be a rules-engine concern rather than a
-  schema change.
+- **Disposal method selection.** Lot closing supports FIFO (default),
+  LIFO, and HIFO. The method is configured per account
+  (`accounts.default_disposal_method`) and snapshotted onto each
+  disposal activity (`activities.disposal_method`) at write time, so
+  method changes apply only to subsequent disposals and never rewrite
+  history. Pooled-average bases (Canada ACB, UK Section 104) are
+  basis-view concerns of the tax rules engine; the lots table stays
+  FIFO-shaped in storage, and pool views are derived at evaluation
+  time. Specific-ID disposal is deferred until Wealthfolio grows a
+  tax-lot management feature.
 - **Tax reports and computations** — once tagging and rules are in
   place, reports like "YTD tax drag," "after-tax return," "optimal
   account placement," and a planner view that leverages
