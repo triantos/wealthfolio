@@ -83,4 +83,3 @@ impl From<DailyAccountValuationDB> for DailyAccountValuation {
         }
     }
 }
-

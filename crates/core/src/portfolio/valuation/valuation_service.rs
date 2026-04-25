@@ -110,6 +110,7 @@ pub struct ValuationService {
 }
 
 impl ValuationService {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         base_currency: Arc<RwLock<String>>,
         valuation_repository: Arc<dyn ValuationRepositoryTrait>,
@@ -135,6 +136,7 @@ impl ValuationService {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new_with_timezone(
         base_currency: Arc<RwLock<String>>,
         timezone: Arc<RwLock<String>>,
@@ -443,10 +445,7 @@ impl ValuationServiceTrait for ValuationService {
             .into_iter()
             .collect();
         let assets = self.asset_repository.list_by_asset_ids(&lot_asset_ids)?;
-        let asset_map: HashMap<String, _> = assets
-            .into_iter()
-            .map(|a| (a.id.clone(), a))
-            .collect();
+        let asset_map: HashMap<String, _> = assets.into_iter().map(|a| (a.id.clone(), a)).collect();
 
         let mut required_asset_ids: HashSet<String> = lot_asset_ids.into_iter().collect();
         let mut required_fx_pairs = HashSet::new();
@@ -541,10 +540,7 @@ impl ValuationServiceTrait for ValuationService {
             .into_iter()
             .collect();
         let assets = self.asset_repository.list_by_asset_ids(&lot_asset_ids)?;
-        let asset_map: HashMap<String, _> = assets
-            .into_iter()
-            .map(|a| (a.id.clone(), a))
-            .collect();
+        let asset_map: HashMap<String, _> = assets.into_iter().map(|a| (a.id.clone(), a)).collect();
 
         let newly_calculated_valuations: Vec<DailyAccountValuation> = snapshots_to_process
             .into_iter()
@@ -765,7 +761,12 @@ mod aggregator_tests {
     use chrono::{TimeZone, Utc};
     use rust_decimal_macros::dec;
 
-    fn val(account_id: &str, date: NaiveDate, contrib: Decimal, fx: Decimal) -> DailyAccountValuation {
+    fn val(
+        account_id: &str,
+        date: NaiveDate,
+        contrib: Decimal,
+        fx: Decimal,
+    ) -> DailyAccountValuation {
         DailyAccountValuation {
             id: format!("{}_{}", account_id, date),
             account_id: account_id.to_string(),
@@ -790,14 +791,20 @@ mod aggregator_tests {
     #[test]
     fn no_transfers_means_naive_sum() {
         let mut by_date: HashMap<NaiveDate, Vec<DailyAccountValuation>> = HashMap::new();
-        by_date.insert(d(2026, 1, 10), vec![
-            val("A", d(2026, 1, 10), dec!(1000), Decimal::ONE),
-            val("B", d(2026, 1, 10), dec!(500), Decimal::ONE),
-        ]);
+        by_date.insert(
+            d(2026, 1, 10),
+            vec![
+                val("A", d(2026, 1, 10), dec!(1000), Decimal::ONE),
+                val("B", d(2026, 1, 10), dec!(500), Decimal::ONE),
+            ],
+        );
         let adjustments: HashMap<NaiveDate, Decimal> = HashMap::new();
 
         let rows = aggregate_rows_with_transfer_netting(
-            by_date, &adjustments, Decimal::ZERO, "USD",
+            by_date,
+            &adjustments,
+            Decimal::ZERO,
+            "USD",
             Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
         );
 
@@ -810,21 +817,30 @@ mod aggregator_tests {
         // Same-currency, same-day paired transfer: helper emits 0 net for that
         // date, aggregator should match the naive sum (no over-correction).
         let mut by_date: HashMap<NaiveDate, Vec<DailyAccountValuation>> = HashMap::new();
-        by_date.insert(d(2026, 1, 1), vec![
-            val("A", d(2026, 1, 1), dec!(1000), Decimal::ONE),
-            val("B", d(2026, 1, 1), dec!(0), Decimal::ONE),
-        ]);
-        by_date.insert(d(2026, 1, 2), vec![
-            val("A", d(2026, 1, 2), dec!(700), Decimal::ONE),
-            val("B", d(2026, 1, 2), dec!(300), Decimal::ONE),
-        ]);
+        by_date.insert(
+            d(2026, 1, 1),
+            vec![
+                val("A", d(2026, 1, 1), dec!(1000), Decimal::ONE),
+                val("B", d(2026, 1, 1), dec!(0), Decimal::ONE),
+            ],
+        );
+        by_date.insert(
+            d(2026, 1, 2),
+            vec![
+                val("A", d(2026, 1, 2), dec!(700), Decimal::ONE),
+                val("B", d(2026, 1, 2), dec!(300), Decimal::ONE),
+            ],
+        );
 
         // Helper output for a paired same-day transfer: net 0 on that date.
         let mut adjustments: HashMap<NaiveDate, Decimal> = HashMap::new();
         adjustments.insert(d(2026, 1, 2), Decimal::ZERO);
 
         let rows = aggregate_rows_with_transfer_netting(
-            by_date, &adjustments, Decimal::ZERO, "USD",
+            by_date,
+            &adjustments,
+            Decimal::ZERO,
+            "USD",
             Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
         );
 
@@ -839,13 +855,17 @@ mod aggregator_tests {
         // so an unpaired TRANSFER_IN (e.g. from an archived counterparty) is
         // treated as a genuine external contribution.
         let mut by_date: HashMap<NaiveDate, Vec<DailyAccountValuation>> = HashMap::new();
-        by_date.insert(d(2026, 1, 1), vec![
-            val("A", d(2026, 1, 1), dec!(500), Decimal::ONE),
-        ]);
+        by_date.insert(
+            d(2026, 1, 1),
+            vec![val("A", d(2026, 1, 1), dec!(500), Decimal::ONE)],
+        );
         let adjustments: HashMap<NaiveDate, Decimal> = HashMap::new();
 
         let rows = aggregate_rows_with_transfer_netting(
-            by_date, &adjustments, Decimal::ZERO, "USD",
+            by_date,
+            &adjustments,
+            Decimal::ZERO,
+            "USD",
             Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
         );
 
@@ -857,17 +877,26 @@ mod aggregator_tests {
         // Day 2 adjustment +50, day 4 adjustment -20. Cumulative subtracted
         // each day: 0, 50, 50, 30.
         let mut by_date: HashMap<NaiveDate, Vec<DailyAccountValuation>> = HashMap::new();
-        for (day, c) in [(1, dec!(100)), (2, dec!(200)), (3, dec!(300)), (4, dec!(400))] {
-            by_date.insert(d(2026, 1, day), vec![
-                val("A", d(2026, 1, day), c, Decimal::ONE),
-            ]);
+        for (day, c) in [
+            (1, dec!(100)),
+            (2, dec!(200)),
+            (3, dec!(300)),
+            (4, dec!(400)),
+        ] {
+            by_date.insert(
+                d(2026, 1, day),
+                vec![val("A", d(2026, 1, day), c, Decimal::ONE)],
+            );
         }
         let mut adjustments: HashMap<NaiveDate, Decimal> = HashMap::new();
         adjustments.insert(d(2026, 1, 2), dec!(50));
         adjustments.insert(d(2026, 1, 4), dec!(-20));
 
         let rows = aggregate_rows_with_transfer_netting(
-            by_date, &adjustments, Decimal::ZERO, "USD",
+            by_date,
+            &adjustments,
+            Decimal::ZERO,
+            "USD",
             Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
         );
 
@@ -883,17 +912,22 @@ mod aggregator_tests {
         // Day 5: no new adjustment, cumulative stays 80.
         // Day 6: +25 adjustment, cumulative becomes 105.
         let mut by_date: HashMap<NaiveDate, Vec<DailyAccountValuation>> = HashMap::new();
-        by_date.insert(d(2026, 2, 5), vec![
-            val("A", d(2026, 2, 5), dec!(1000), Decimal::ONE),
-        ]);
-        by_date.insert(d(2026, 2, 6), vec![
-            val("A", d(2026, 2, 6), dec!(1100), Decimal::ONE),
-        ]);
+        by_date.insert(
+            d(2026, 2, 5),
+            vec![val("A", d(2026, 2, 5), dec!(1000), Decimal::ONE)],
+        );
+        by_date.insert(
+            d(2026, 2, 6),
+            vec![val("A", d(2026, 2, 6), dec!(1100), Decimal::ONE)],
+        );
         let mut adjustments: HashMap<NaiveDate, Decimal> = HashMap::new();
         adjustments.insert(d(2026, 2, 6), dec!(25));
 
         let rows = aggregate_rows_with_transfer_netting(
-            by_date, &adjustments, dec!(80), "USD",
+            by_date,
+            &adjustments,
+            dec!(80),
+            "USD",
             Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
         );
 
@@ -906,13 +940,17 @@ mod aggregator_tests {
         // A is a EUR account with contrib 1000 EUR and fx_rate_to_base = 1.10.
         // Naive base sum = 1100.
         let mut by_date: HashMap<NaiveDate, Vec<DailyAccountValuation>> = HashMap::new();
-        by_date.insert(d(2026, 3, 1), vec![
-            val("A", d(2026, 3, 1), dec!(1000), dec!(1.10)),
-        ]);
+        by_date.insert(
+            d(2026, 3, 1),
+            vec![val("A", d(2026, 3, 1), dec!(1000), dec!(1.10))],
+        );
         let adjustments: HashMap<NaiveDate, Decimal> = HashMap::new();
 
         let rows = aggregate_rows_with_transfer_netting(
-            by_date, &adjustments, Decimal::ZERO, "USD",
+            by_date,
+            &adjustments,
+            Decimal::ZERO,
+            "USD",
             Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
         );
 
@@ -924,7 +962,10 @@ mod aggregator_tests {
         let by_date: HashMap<NaiveDate, Vec<DailyAccountValuation>> = HashMap::new();
         let adjustments: HashMap<NaiveDate, Decimal> = HashMap::new();
         let rows = aggregate_rows_with_transfer_netting(
-            by_date, &adjustments, Decimal::ZERO, "USD",
+            by_date,
+            &adjustments,
+            Decimal::ZERO,
+            "USD",
             Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
         );
         assert!(rows.is_empty());
@@ -933,13 +974,25 @@ mod aggregator_tests {
     #[test]
     fn rows_sorted_by_date() {
         let mut by_date: HashMap<NaiveDate, Vec<DailyAccountValuation>> = HashMap::new();
-        by_date.insert(d(2026, 1, 3), vec![val("A", d(2026, 1, 3), dec!(3), Decimal::ONE)]);
-        by_date.insert(d(2026, 1, 1), vec![val("A", d(2026, 1, 1), dec!(1), Decimal::ONE)]);
-        by_date.insert(d(2026, 1, 2), vec![val("A", d(2026, 1, 2), dec!(2), Decimal::ONE)]);
+        by_date.insert(
+            d(2026, 1, 3),
+            vec![val("A", d(2026, 1, 3), dec!(3), Decimal::ONE)],
+        );
+        by_date.insert(
+            d(2026, 1, 1),
+            vec![val("A", d(2026, 1, 1), dec!(1), Decimal::ONE)],
+        );
+        by_date.insert(
+            d(2026, 1, 2),
+            vec![val("A", d(2026, 1, 2), dec!(2), Decimal::ONE)],
+        );
         let adjustments: HashMap<NaiveDate, Decimal> = HashMap::new();
 
         let rows = aggregate_rows_with_transfer_netting(
-            by_date, &adjustments, Decimal::ZERO, "USD",
+            by_date,
+            &adjustments,
+            Decimal::ZERO,
+            "USD",
             Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
         );
 

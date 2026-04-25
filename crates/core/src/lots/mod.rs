@@ -59,6 +59,8 @@ pub struct LotClosure {
     pub total_cost_basis: String,
     /// Transaction fees allocated to this lot.
     pub fee_allocated: String,
+    /// Method used to select this lot for disposal.
+    pub disposal_method: DisposalMethod,
 }
 
 /// Persistence interface for lot rows.
@@ -165,6 +167,12 @@ pub struct LotRecord {
 }
 
 /// Cost basis disposal method.
+///
+/// Pooled-average bases (Canada ACB, UK Section 104, France weighted-average)
+/// are basis-view concerns of the tax rules engine, not lot-closing
+/// strategies — they are not enumerated here. Specific-ID disposal is
+/// deferred until a tax-lot management feature is built; it is not yet
+/// part of this enum.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum DisposalMethod {
@@ -173,12 +181,8 @@ pub enum DisposalMethod {
     Fifo,
     /// Last in, first out.
     Lifo,
-    /// Highest cost first (tax-loss harvesting).
+    /// Highest cost first (commonly used for tax-loss harvesting).
     Hifo,
-    /// Weighted average cost (Canada ACB, many international jurisdictions).
-    AvgCost,
-    /// User selects specific lots.
-    SpecificId,
 }
 
 impl DisposalMethod {
@@ -187,8 +191,6 @@ impl DisposalMethod {
             Self::Fifo => "FIFO",
             Self::Lifo => "LIFO",
             Self::Hifo => "HIFO",
-            Self::AvgCost => "AVG_COST",
-            Self::SpecificId => "SPECIFIC_ID",
         }
     }
 }
@@ -909,6 +911,7 @@ mod tests {
             import_run_id: None,
             is_user_modified: false,
             needs_review: false,
+            disposal_method: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

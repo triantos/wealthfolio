@@ -73,10 +73,16 @@ pub struct NewAccount {
     pub meta: Option<String>,
     pub provider: Option<String>,
     pub provider_account_id: Option<String>,
+    #[serde(default = "default_disposal_method")]
+    pub default_disposal_method: String,
 }
 
 fn default_tracking_mode() -> String {
     "NOT_SET".to_string()
+}
+
+fn default_disposal_method() -> String {
+    "FIFO".to_string()
 }
 
 fn parse_tracking_mode(s: &str) -> core_accounts::TrackingMode {
@@ -84,6 +90,15 @@ fn parse_tracking_mode(s: &str) -> core_accounts::TrackingMode {
         "TRANSACTIONS" => core_accounts::TrackingMode::Transactions,
         "HOLDINGS" => core_accounts::TrackingMode::Holdings,
         _ => core_accounts::TrackingMode::NotSet,
+    }
+}
+
+fn parse_disposal_method(s: &str) -> wealthfolio_core::lots::DisposalMethod {
+    use wealthfolio_core::lots::DisposalMethod;
+    match s {
+        "LIFO" => DisposalMethod::Lifo,
+        "HIFO" => DisposalMethod::Hifo,
+        _ => DisposalMethod::Fifo,
     }
 }
 
@@ -104,6 +119,7 @@ impl From<NewAccount> for core_accounts::NewAccount {
             meta: a.meta,
             provider: a.provider,
             provider_account_id: a.provider_account_id,
+            default_disposal_method: parse_disposal_method(&a.default_disposal_method),
         }
     }
 }
@@ -124,6 +140,7 @@ pub struct AccountUpdate {
     pub meta: Option<String>,
     pub provider: Option<String>,
     pub provider_account_id: Option<String>,
+    pub default_disposal_method: Option<String>,
 }
 
 impl From<AccountUpdate> for core_accounts::AccountUpdate {
@@ -142,6 +159,7 @@ impl From<AccountUpdate> for core_accounts::AccountUpdate {
             meta: a.meta,
             provider: a.provider,
             provider_account_id: a.provider_account_id,
+            default_disposal_method: a.default_disposal_method.map(|s| parse_disposal_method(&s)),
         }
     }
 }

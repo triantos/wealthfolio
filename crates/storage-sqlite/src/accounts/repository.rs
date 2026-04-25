@@ -61,6 +61,7 @@ impl AccountRepositoryTrait for AccountRepository {
         // Capture which optional fields were explicitly set before conversion
         let is_archived_provided = account_update.is_archived.is_some();
         let tracking_mode_provided = account_update.tracking_mode.is_some();
+        let disposal_method_provided = account_update.default_disposal_method.is_some();
 
         self.writer
             .exec_tx(move |tx| {
@@ -90,6 +91,9 @@ impl AccountRepositoryTrait for AccountRepository {
                 }
                 if !tracking_mode_provided {
                     account_db.tracking_mode = existing.tracking_mode;
+                }
+                if !disposal_method_provided {
+                    account_db.default_disposal_method = existing.default_disposal_method;
                 }
 
                 diesel::update(accounts.find(&account_db.id))

@@ -46,6 +46,7 @@ pub fn normalize_context_kind_value(raw: &str) -> &str {
 
 use crate::activities::csv_parser::ParseConfig;
 use crate::assets::NewAsset;
+use crate::lots::DisposalMethod;
 use crate::Result;
 use crate::{activities::activities_errors::ActivityError, QuoteMode};
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
@@ -147,6 +148,16 @@ pub struct Activity {
     pub is_user_modified: bool, // User edited; sync protects economics
     #[serde(default)]
     pub needs_review: bool, // Needs user review (low confidence, etc.)
+
+    /// Disposal method used to consume lots when this activity reduces a
+    /// position (SELL, TRANSFER_OUT, etc.). Snapshotted from the account's
+    /// `default_disposal_method` at activity write time so subsequent
+    /// changes to the account default never rewrite history. None for
+    /// activities that don't dispose lots, or for legacy rows from before
+    /// per-activity tracking — both fall back to FIFO.
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub disposal_method: Option<DisposalMethod>,
 
     // Audit
     #[serde(with = "timestamp_format")]

@@ -9,6 +9,7 @@ use std::str::FromStr;
 use wealthfolio_core::activities::{
     Activity, ActivityStatus, ActivityUpdate, ActivityUpsert, NewActivity,
 };
+use wealthfolio_core::lots::DisposalMethod;
 
 /// Helper function to parse a string into a Decimal,
 /// with a fallback for scientific notation by parsing as f64 first.
@@ -92,6 +93,13 @@ pub struct ActivityDB {
     // Sync flags (i32 for SQLite INTEGER)
     pub is_user_modified: i32,
     pub needs_review: i32,
+
+    /// Snapshotted from the account's default_disposal_method at write
+    /// time for SELL/TRANSFER_OUT-type activities. NULL for activities
+    /// that don't dispose lots, and for legacy rows from before
+    /// per-activity tracking.
+    #[diesel(treat_none_as_null = true)]
+    pub disposal_method: Option<String>,
 
     // Audit
     pub created_at: String,
@@ -452,6 +460,12 @@ impl From<ActivityDB> for Activity {
             is_user_modified: db.is_user_modified != 0,
             needs_review: db.needs_review != 0,
 
+            disposal_method: db.disposal_method.as_deref().map(|s| match s {
+                "LIFO" => DisposalMethod::Lifo,
+                "HIFO" => DisposalMethod::Hifo,
+                _ => DisposalMethod::Fifo,
+            }),
+
             // Audit
             created_at: chrono::DateTime::parse_from_rfc3339(&db.created_at)
                 .map(|dt| dt.with_timezone(&Utc))
@@ -551,6 +565,10 @@ impl From<NewActivity> for ActivityDB {
             is_user_modified: 0,
             needs_review: domain.needs_review.map(|b| b as i32).unwrap_or(0),
 
+            // The activity service overwrites this with the account's
+            // default for disposal-type activities before INSERT.
+            disposal_method: None,
+
             // Audit
             created_at: now.to_rfc3339(),
             updated_at: now.to_rfc3339(),
@@ -639,6 +657,11 @@ impl From<ActivityUpdate> for ActivityDB {
             is_user_modified: 1,
             needs_review: 0,
 
+            // Preserved from the existing record in the repository — never
+            // overwritten by an update so the snapshot from creation time
+            // remains the historical record.
+            disposal_method: None,
+
             // Audit
             created_at: now.to_rfc3339(),
             updated_at: now.to_rfc3339(),
@@ -724,6 +747,10 @@ impl From<ActivityUpsert> for ActivityDB {
             // Sync flags - sync activities are not user modified by default
             is_user_modified: 0,
             needs_review: domain.needs_review.map(|b| b as i32).unwrap_or(0),
+
+            // The activity service overwrites this with the account's
+            // default for disposal-type activities before INSERT.
+            disposal_method: None,
 
             // Audit
             created_at: now.to_rfc3339(),

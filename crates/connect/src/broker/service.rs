@@ -247,6 +247,7 @@ impl BrokerSyncServiceTrait for BrokerSyncService {
                 provider_account_id: Some(provider_account_id.clone()),
                 is_archived: false,
                 tracking_mode: TrackingMode::Holdings,
+                default_disposal_method: Default::default(),
             };
 
             // Create the account via AccountService (handles FX rate registration)
@@ -955,7 +956,10 @@ impl BrokerSyncServiceTrait for BrokerSyncService {
                 let open_lots = lot_repo.get_open_lots_for_account(&account_id).await?;
                 let mut grouped: HashMap<String, (Decimal, Decimal)> = HashMap::new();
                 for lot in &open_lots {
-                    let qty = lot.remaining_quantity.parse::<Decimal>().unwrap_or_default();
+                    let qty = lot
+                        .remaining_quantity
+                        .parse::<Decimal>()
+                        .unwrap_or_default();
                     let cost = lot.total_cost_basis.parse::<Decimal>().unwrap_or_default();
                     let entry = grouped.entry(lot.asset_id.clone()).or_default();
                     entry.0 += qty;
@@ -1156,8 +1160,7 @@ impl BrokerSyncService {
                 == quantity.round_dp(HOLDINGS_DECIMAL_PRECISION);
             // When prior position comes from lots, currency is empty — skip the
             // currency check in that case (asset currency doesn't change between syncs).
-            let currency_ok =
-                previous.currency.is_empty() || previous.currency == currency;
+            let currency_ok = previous.currency.is_empty() || previous.currency == currency;
             if same_quantity && currency_ok {
                 return previous.average_cost.round_dp(HOLDINGS_DECIMAL_PRECISION);
             }

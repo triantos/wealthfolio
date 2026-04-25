@@ -56,8 +56,6 @@ impl From<LotRecordDB> for LotRecord {
             disposal_method: match r.disposal_method.as_str() {
                 "LIFO" => wealthfolio_core::lots::DisposalMethod::Lifo,
                 "HIFO" => wealthfolio_core::lots::DisposalMethod::Hifo,
-                "AVG_COST" => wealthfolio_core::lots::DisposalMethod::AvgCost,
-                "SPECIFIC_ID" => wealthfolio_core::lots::DisposalMethod::SpecificId,
                 _ => wealthfolio_core::lots::DisposalMethod::Fifo,
             },
             is_closed: r.is_closed != 0,
@@ -282,7 +280,7 @@ impl LotRepositoryTrait for LotsRepository {
                         cost_per_unit: closure.cost_per_unit.clone(),
                         total_cost_basis: closure.total_cost_basis.clone(),
                         fee_allocated: closure.fee_allocated.clone(),
-                        disposal_method: "FIFO".to_string(),
+                        disposal_method: closure.disposal_method.as_str().to_string(),
                         is_closed: 1,
                         close_date: Some(closure.close_date.clone()),
                         close_activity_id: closure.close_activity_id.clone(),
@@ -300,6 +298,7 @@ impl LotRepositoryTrait for LotsRepository {
                             dsl::close_date.eq(diesel::upsert::excluded(dsl::close_date)),
                             dsl::close_activity_id
                                 .eq(diesel::upsert::excluded(dsl::close_activity_id)),
+                            dsl::disposal_method.eq(diesel::upsert::excluded(dsl::disposal_method)),
                             dsl::remaining_quantity.eq("0"),
                             dsl::updated_at.eq(diesel::upsert::excluded(dsl::updated_at)),
                         ))

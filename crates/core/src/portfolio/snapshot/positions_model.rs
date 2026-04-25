@@ -6,6 +6,7 @@ use std::collections::VecDeque;
 use std::default::Default;
 
 use crate::activities::Activity;
+use crate::lots::DisposalMethod;
 
 use crate::constants::QUANTITY_THRESHOLD;
 
@@ -112,10 +113,10 @@ pub struct Lot {
     pub source_activity_id: Option<String>,
 }
 
-/// Result of a FIFO lot reduction, containing both aggregate values
-/// and the individual lots that were removed (for transfer carry-over).
+/// Result of a lot reduction, containing both aggregate values and the
+/// individual lots that were removed (for transfer carry-over).
 #[derive(Debug, Clone)]
-pub struct FifoReductionResult {
+pub struct LotReductionResult {
     /// Total quantity actually reduced.
     pub quantity_reduced: Decimal,
     /// Total cost basis removed in the position's currency.
@@ -453,13 +454,16 @@ impl Position {
         Ok(total_cost_basis_added)
     }
 
-    /// Reduces position quantity using FIFO lot relief.
-    /// Returns a `FifoReductionResult` containing the quantity reduced, cost basis removed,
-    /// and the individual lots that were removed (for use in transfer carry-over).
-    pub fn reduce_lots_fifo(
+    /// Reduces position quantity by consuming lots in the order dictated by
+    /// `method` (FIFO: oldest first; LIFO: newest first; HIFO: highest cost
+    /// per unit first). Returns a `LotReductionResult` containing the
+    /// quantity reduced, cost basis removed, and the individual lots that
+    /// were removed (for use in transfer carry-over).
+    pub fn reduce_lots(
         &mut self,
+        method: DisposalMethod,
         quantity_to_reduce_input: Decimal,
-    ) -> Result<FifoReductionResult> {
+    ) -> Result<LotReductionResult> {
         if !quantity_to_reduce_input.is_sign_positive() {
             return Err(CalculatorError::InvalidActivity(
                 "Quantity to reduce must be positive".to_string(),
@@ -471,7 +475,7 @@ impl Position {
 
         if !is_quantity_significant(&available_quantity) || available_quantity <= Decimal::ZERO {
             warn!("Attempting to reduce position {} which has zero/insignificant quantity {}. Skipping reduction.", self.id, available_quantity);
-            return Ok(FifoReductionResult {
+            return Ok(LotReductionResult {
                 quantity_reduced: Decimal::ZERO,
                 cost_basis_removed: Decimal::ZERO,
                 removed_lots: Vec::new(),
@@ -489,9 +493,36 @@ impl Position {
             quantity_to_reduce = available_quantity;
         }
 
-        // Convert to Vec, sort, operate, convert back later
+        // Convert to Vec, sort by the configured disposal method, operate.
         let mut vec_lots: Vec<_> = self.lots.drain(..).collect();
-        vec_lots.sort_by_key(|lot| lot.acquisition_date); // Ensure FIFO order
+        match method {
+            DisposalMethod::Fifo => {
+                vec_lots.sort_by_key(|lot| lot.acquisition_date);
+            }
+            DisposalMethod::Lifo => {
+                vec_lots.sort_by_key(|lot| std::cmp::Reverse(lot.acquisition_date));
+            }
+            DisposalMethod::Hifo => {
+                // Highest cost per unit first. cost_basis / quantity is
+                // invariant across partial consumption, so the per-unit
+                // ordering is stable as lots are reduced.
+                vec_lots.sort_by(|a, b| {
+                    let a_cpu = if a.quantity.is_zero() {
+                        Decimal::ZERO
+                    } else {
+                        a.cost_basis / a.quantity
+                    };
+                    let b_cpu = if b.quantity.is_zero() {
+                        Decimal::ZERO
+                    } else {
+                        b.cost_basis / b.quantity
+                    };
+                    b_cpu
+                        .cmp(&a_cpu)
+                        .then_with(|| a.acquisition_date.cmp(&b.acquisition_date))
+                });
+            }
+        }
 
         let mut lot_indices_to_remove = Vec::new();
         let mut lot_updates = Vec::new(); // (index, new_quantity, new_cost_basis, new_fees)
@@ -593,17 +624,17 @@ impl Position {
         // Convert the final Vec back to VecDeque and assign to self.lots
         self.lots = vec_lots.into();
 
-        // Debug: log remaining lots after FIFO reduction
+        // Debug: log remaining lots after reduction
         for lot in &self.lots {
             debug!(
-                "[LOT-DEBUG] reduce_lots_fifo result: id={} asset={} quantity={} original_quantity={}",
+                "[LOT-DEBUG] reduce_lots result: id={} asset={} quantity={} original_quantity={}",
                 lot.id, self.asset_id, lot.quantity, lot.original_quantity
             );
         }
 
         self.recalculate_aggregates();
 
-        Ok(FifoReductionResult {
+        Ok(LotReductionResult {
             quantity_reduced: actual_quantity_reduced,
             cost_basis_removed: cost_basis_of_sold_lots_asset_currency,
             removed_lots,
@@ -645,5 +676,103 @@ impl Position {
         }
         self.recalculate_aggregates();
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod reduce_lots_method_tests {
+    use super::*;
+    use chrono::TimeZone;
+    use rust_decimal_macros::dec;
+
+    fn lot(id: &str, year: i32, month: u32, day: u32, qty: Decimal, cost: Decimal) -> Lot {
+        Lot {
+            id: id.to_string(),
+            position_id: "POS".to_string(),
+            acquisition_date: Utc.with_ymd_and_hms(year, month, day, 0, 0, 0).unwrap(),
+            quantity: qty,
+            original_quantity: qty,
+            cost_basis: cost,
+            acquisition_price: cost / qty,
+            acquisition_fees: Decimal::ZERO,
+            fx_rate_to_position: None,
+            source_activity_id: Some(id.to_string()),
+        }
+    }
+
+    /// Three lots with distinct dates and per-unit costs. Selling 15
+    /// shares with each method exercises the three sort orders against
+    /// the same input — FIFO consumes oldest first, LIFO newest first,
+    /// HIFO highest-cost-per-unit first.
+    fn three_lot_position() -> Position {
+        let mut p = Position {
+            id: "POS".into(),
+            asset_id: "ASSET".into(),
+            currency: "USD".into(),
+            lots: VecDeque::from(vec![
+                lot("A", 2026, 1, 1, dec!(10), dec!(1000)), // $100/share, oldest
+                lot("B", 2026, 2, 1, dec!(10), dec!(1500)), // $150/share, highest
+                lot("C", 2026, 3, 1, dec!(10), dec!(800)),  // $80/share, newest
+            ]),
+            ..Position::default()
+        };
+        p.recalculate_aggregates();
+        p
+    }
+
+    #[test]
+    fn fifo_consumes_oldest_first() {
+        let mut p = three_lot_position();
+        let result = p.reduce_lots(DisposalMethod::Fifo, dec!(15)).unwrap();
+        // 10 from A ($1000) + 5 from B ($750) = $1750
+        assert_eq!(result.quantity_reduced, dec!(15));
+        assert_eq!(result.cost_basis_removed, dec!(1750));
+        assert_eq!(result.fully_consumed_lot_ids, vec!["A".to_string()]);
+    }
+
+    #[test]
+    fn lifo_consumes_newest_first() {
+        let mut p = three_lot_position();
+        let result = p.reduce_lots(DisposalMethod::Lifo, dec!(15)).unwrap();
+        // 10 from C ($800) + 5 from B ($750) = $1550
+        assert_eq!(result.quantity_reduced, dec!(15));
+        assert_eq!(result.cost_basis_removed, dec!(1550));
+        assert_eq!(result.fully_consumed_lot_ids, vec!["C".to_string()]);
+    }
+
+    #[test]
+    fn hifo_consumes_highest_cost_first() {
+        let mut p = three_lot_position();
+        let result = p.reduce_lots(DisposalMethod::Hifo, dec!(15)).unwrap();
+        // 10 from B ($1500) + 5 from A ($500) = $2000
+        assert_eq!(result.quantity_reduced, dec!(15));
+        assert_eq!(result.cost_basis_removed, dec!(2000));
+        assert_eq!(result.fully_consumed_lot_ids, vec!["B".to_string()]);
+    }
+
+    /// Reducing the entire position produces the same total cost basis
+    /// regardless of method — methods only differ in *which* lots are
+    /// consumed, not the aggregate.
+    #[test]
+    fn methods_agree_when_consuming_everything() {
+        let total_qty = dec!(30);
+        let total_cost = dec!(3300); // 1000 + 1500 + 800
+
+        for method in [
+            DisposalMethod::Fifo,
+            DisposalMethod::Lifo,
+            DisposalMethod::Hifo,
+        ] {
+            let mut p = three_lot_position();
+            let result = p.reduce_lots(method, total_qty).unwrap();
+            assert_eq!(result.quantity_reduced, total_qty, "method={:?}", method);
+            assert_eq!(result.cost_basis_removed, total_cost, "method={:?}", method);
+            assert_eq!(
+                result.fully_consumed_lot_ids.len(),
+                3,
+                "method={:?}",
+                method
+            );
+        }
     }
 }

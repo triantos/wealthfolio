@@ -42,6 +42,17 @@ fn apply_decimal_patch(existing: Option<String>, patch: Option<Option<Decimal>>)
     }
 }
 
+/// Activities that consume lots and therefore carry a disposal method.
+fn is_disposal_activity(activity_type: &str) -> bool {
+    use wealthfolio_core::activities::{
+        ACTIVITY_TYPE_ADJUSTMENT, ACTIVITY_TYPE_SELL, ACTIVITY_TYPE_TRANSFER_OUT,
+    };
+    matches!(
+        activity_type,
+        ACTIVITY_TYPE_SELL | ACTIVITY_TYPE_TRANSFER_OUT | ACTIVITY_TYPE_ADJUSTMENT
+    )
+}
+
 // Inherent methods for ActivityRepository
 impl ActivityRepository {
     /// Creates a new ActivityRepository instance
@@ -287,6 +298,22 @@ impl ActivityRepositoryTrait for ActivityRepository {
             .exec_tx(move |tx| -> Result<Activity> {
                 let mut activity_to_insert = activity_db_owned;
                 activity_to_insert.id = Uuid::new_v4().to_string();
+
+                // Snapshot the account's current default_disposal_method onto
+                // disposal-type activities so subsequent changes to the
+                // account default never rewrite history.
+                if activity_to_insert.disposal_method.is_none()
+                    && is_disposal_activity(&activity_to_insert.activity_type)
+                {
+                    let default_method: Option<String> = accounts::table
+                        .filter(accounts::id.eq(&activity_to_insert.account_id))
+                        .select(accounts::default_disposal_method)
+                        .first(tx.conn())
+                        .optional()
+                        .map_err(StorageError::from)?;
+                    activity_to_insert.disposal_method = default_method;
+                }
+
                 let inserted_activity = diesel::insert_into(activities::table)
                     .values(&activity_to_insert)
                     .get_result::<ActivityDB>(tx.conn())
@@ -331,6 +358,7 @@ impl ActivityRepositoryTrait for ActivityRepository {
                     unit_price,
                     amount,
                     fee,
+                    disposal_method,
                     ..
                 } = existing;
 
@@ -376,6 +404,10 @@ impl ActivityRepositoryTrait for ActivityRepository {
                 if activity_to_update.metadata.is_none() {
                     activity_to_update.metadata = metadata;
                 }
+                // The disposal method snapshot is set once at creation
+                // and never changed by an update — preserves the
+                // historical record of which method was used.
+                activity_to_update.disposal_method = disposal_method;
                 activity_to_update.updated_at = chrono::Utc::now().to_rfc3339();
 
                 let updated_activity =

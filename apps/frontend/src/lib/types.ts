@@ -54,6 +54,7 @@ export interface Account {
   isActive: boolean;
   isArchived: boolean;
   trackingMode: TrackingMode;
+  defaultDisposalMethod?: DisposalMethod;
   createdAt: Date;
   updatedAt: Date;
   platformId?: string; // Optional - links to platform/broker
@@ -1557,6 +1558,15 @@ export interface MigrationResult {
  * Matches the backend TrackingMode enum.
  */
 export type TrackingMode = "TRANSACTIONS" | "HOLDINGS" | "NOT_SET";
+
+/**
+ * Cost-basis disposal method applied when consuming lots on SELL or
+ * TRANSFER_OUT activities. Snapshotted onto each disposal activity at
+ * write time so changes to the account default never rewrite history.
+ *
+ * Matches the backend DisposalMethod enum.
+ */
+export type DisposalMethod = "FIFO" | "LIFO" | "HIFO";
 
 // ============================================================================
 // AI Provider Types

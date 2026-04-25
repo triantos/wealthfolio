@@ -278,7 +278,6 @@ impl SnapshotService {
         }
     }
 
-
     // --- Core Calculation Logic (Internal Helper) ---
     async fn calculate_holdings_snapshots_internal(
         &self,
@@ -891,7 +890,6 @@ impl SnapshotService {
         Ok((current_holdings_snapshots, keyframes_to_save, all_warnings))
     }
 
-
     // --- Helpers ---
 
     // create_initial_snapshot creates a snapshot with default values
@@ -1035,7 +1033,6 @@ impl SnapshotService {
         }
         adjusted_activities
     }
-
 }
 
 #[async_trait]

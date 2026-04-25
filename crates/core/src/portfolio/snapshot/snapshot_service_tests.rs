@@ -1035,6 +1035,7 @@ mod tests {
             provider_account_id: None,
             is_archived: false,
             tracking_mode: crate::accounts::TrackingMode::NotSet,
+            default_disposal_method: Default::default(),
         }
     }
 
@@ -1095,11 +1096,11 @@ mod tests {
             import_run_id: None,
             is_user_modified: false,
             needs_review: false,
+            disposal_method: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }
     }
-
 
     #[tokio::test]
     async fn test_calculate_holdings_snapshots_persists() {
@@ -3990,6 +3991,7 @@ mod tests {
     // ==================== ARCHIVE BEHAVIOR TESTS ====================
 
     /// Mock snapshot repository that filters by non-archived account IDs
+    #[allow(dead_code)]
     #[derive(Clone, Debug)]
     struct MockArchiveAwareSnapshotRepository {
         snapshots: Arc<RwLock<HashMap<String, Vec<AccountStateSnapshot>>>>,
@@ -3997,6 +3999,7 @@ mod tests {
         non_archived_account_ids: Arc<RwLock<HashSet<String>>>,
     }
 
+    #[allow(dead_code)]
     impl MockArchiveAwareSnapshotRepository {
         fn new(non_archived_account_ids: HashSet<String>) -> Self {
             Self {
@@ -4276,6 +4279,7 @@ mod tests {
         }
     }
 
+    #[allow(dead_code)]
     fn create_test_account_with_archive_state(
         id: &str,
         currency: &str,
@@ -4300,9 +4304,9 @@ mod tests {
             provider_account_id: None,
             is_archived,
             tracking_mode: crate::accounts::TrackingMode::NotSet,
+            default_disposal_method: Default::default(),
         }
     }
-
 
     #[tokio::test]
     async fn test_newly_created_account_has_default_archive_values() {
@@ -4660,7 +4664,9 @@ mod tests {
             Ok(())
         }
 
-        async fn get_open_position_quantities(&self) -> AppResult<std::collections::HashMap<String, rust_decimal::Decimal>> {
+        async fn get_open_position_quantities(
+            &self,
+        ) -> AppResult<std::collections::HashMap<String, rust_decimal::Decimal>> {
             Ok(std::collections::HashMap::new())
         }
 
@@ -4952,11 +4958,7 @@ mod tests {
         );
         // Parse as Decimal to avoid trailing-zero formatting differences
         let cost_per_unit: Decimal = closures[0].cost_per_unit.parse().unwrap();
-        assert_eq!(
-            cost_per_unit,
-            dec!(185),
-            "cost_per_unit = buy price"
-        );
+        assert_eq!(cost_per_unit, dec!(185), "cost_per_unit = buy price");
     }
 
     // ── get_cash_balances / get_cash_balances_on_date ───────────────────────
@@ -5095,10 +5097,7 @@ mod tests {
         let mut a2_mid = create_blank_snapshot(&acc2.id, "USD", "2026-01-10");
         a2_mid.cash_balances.insert("USD".to_string(), dec!(50));
 
-        let svc = build_cash_test_service(
-            vec![acc1, acc2],
-            vec![a1_early, a1_later, a2_mid],
-        );
+        let svc = build_cash_test_service(vec![acc1, acc2], vec![a1_early, a1_later, a2_mid]);
 
         let cash = svc
             .get_cash_balances_on_date(

@@ -226,6 +226,7 @@ mod tests {
             import_run_id: None,
             is_user_modified: false,
             needs_review: false,
+            disposal_method: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

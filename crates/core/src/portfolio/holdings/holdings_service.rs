@@ -1,7 +1,7 @@
 use crate::activities::ActivityRepositoryTrait;
 use crate::assets::{Asset, AssetClassificationService, AssetKind, AssetServiceTrait};
-use crate::constants::PORTFOLIO_TOTAL_ACCOUNT_ID;
 use crate::constants::DECIMAL_PRECISION;
+use crate::constants::PORTFOLIO_TOTAL_ACCOUNT_ID;
 use crate::errors::Result;
 use crate::fx::currency::{get_normalization_rule, normalize_currency_code};
 use crate::lots::{LotRecord, LotRepositoryTrait};
@@ -546,7 +546,12 @@ impl HoldingsServiceTrait for HoldingsService {
         };
 
         let mut holdings = self
-            .build_live_holdings_from_lots(account_id, &cash_balances, base_currency, Some(asset_id))
+            .build_live_holdings_from_lots(
+                account_id,
+                &cash_balances,
+                base_currency,
+                Some(asset_id),
+            )
             .await;
         self.value_holdings_best_effort(account_id, &mut holdings)
             .await;
@@ -563,10 +568,7 @@ impl HoldingsServiceTrait for HoldingsService {
         });
 
         let Some(index) = holding_index else {
-            debug!(
-                "Asset {} not held in account {}.",
-                asset_id, account_id
-            );
+            debug!("Asset {} not held in account {}.", asset_id, account_id);
             return Ok(None);
         };
 

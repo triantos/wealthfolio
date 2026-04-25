@@ -91,6 +91,7 @@ mod tests {
             provider_account_id: None,
             is_archived: false,
             tracking_mode,
+            default_disposal_method: Default::default(),
         }
     }
 }

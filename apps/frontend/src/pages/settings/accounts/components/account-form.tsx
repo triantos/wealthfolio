@@ -50,6 +50,12 @@ const accountTypes: ResponsiveSelectOption[] = [
   { label: "Crypto", value: "CRYPTOCURRENCY" },
 ];
 
+const disposalMethods: ResponsiveSelectOption[] = [
+  { label: "FIFO — first in, first out", value: "FIFO" },
+  { label: "LIFO — last in, first out", value: "LIFO" },
+  { label: "HIFO — highest cost first", value: "HIFO" },
+];
+
 // Input type (what the form receives)
 type AccountFormInput = z.input<typeof newAccountSchema>;
 // Output type after zod parsing (with defaults applied)
@@ -302,6 +308,28 @@ export function AccountForm({ defaultValues, onSuccess = () => undefined }: Acco
                     </AlertDescription>
                   </Alert>
                 )}
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="defaultDisposalMethod"
+            render={({ field }) => (
+              <FormItem className="flex flex-col">
+                <FormLabel>Default Disposal Method</FormLabel>
+                <FormControl>
+                  <ResponsiveSelect
+                    value={field.value}
+                    onValueChange={field.onChange}
+                    options={disposalMethods}
+                    placeholder="Select a disposal method"
+                    sheetTitle="Select Disposal Method"
+                    sheetDescription="Applied to new SELL and TRANSFER_OUT activities. The chosen method is snapshotted onto each disposal at write time, so changing this later doesn't affect existing history."
+                    triggerClassName="h-11"
+                  />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}

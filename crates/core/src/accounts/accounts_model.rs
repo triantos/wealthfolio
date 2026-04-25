@@ -3,6 +3,7 @@
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
+use crate::lots::DisposalMethod;
 use crate::{errors::ValidationError, Error, Result};
 
 /// Tracking mode for an account - determines how holdings are tracked.
@@ -44,6 +45,11 @@ pub struct Account {
     pub is_archived: bool,
     /// Tracking mode for the account
     pub tracking_mode: TrackingMode,
+    /// Default disposal method applied to new SELL/TRANSFER_OUT activities.
+    /// Each disposal activity snapshots this value at write time so changes
+    /// here never rewrite history.
+    #[serde(default)]
+    pub default_disposal_method: DisposalMethod,
 }
 
 /// Input model for creating a new account.
@@ -67,6 +73,8 @@ pub struct NewAccount {
     pub is_archived: bool,
     #[serde(default)]
     pub tracking_mode: TrackingMode,
+    #[serde(default)]
+    pub default_disposal_method: DisposalMethod,
 }
 
 impl NewAccount {
@@ -103,6 +111,7 @@ pub struct AccountUpdate {
     pub provider_account_id: Option<String>,
     pub is_archived: Option<bool>,
     pub tracking_mode: Option<TrackingMode>,
+    pub default_disposal_method: Option<DisposalMethod>,
 }
 
 impl AccountUpdate {

@@ -18,6 +18,7 @@ diesel::table! {
         provider_account_id -> Nullable<Text>,
         is_archived -> Bool,
         tracking_mode -> Text,
+        default_disposal_method -> Text,
     }
 }
 
@@ -48,6 +49,7 @@ diesel::table! {
         import_run_id -> Nullable<Text>,
         is_user_modified -> Integer,
         needs_review -> Integer,
+        disposal_method -> Nullable<Text>,
         created_at -> Text,
         updated_at -> Text,
     }

@@ -5,6 +5,7 @@ use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use wealthfolio_core::accounts::{Account, AccountUpdate, NewAccount, TrackingMode};
+use wealthfolio_core::lots::DisposalMethod;
 
 /// Database model for accounts
 #[derive(
@@ -41,6 +42,15 @@ pub struct AccountDB {
     pub provider_account_id: Option<String>,
     pub is_archived: bool,
     pub tracking_mode: String,
+    pub default_disposal_method: String,
+}
+
+fn parse_disposal_method(s: &str) -> DisposalMethod {
+    match s {
+        "LIFO" => DisposalMethod::Lifo,
+        "HIFO" => DisposalMethod::Hifo,
+        _ => DisposalMethod::Fifo,
+    }
 }
 
 // Conversion implementations
@@ -68,6 +78,7 @@ impl From<AccountDB> for Account {
             provider_account_id: db.provider_account_id,
             is_archived: db.is_archived,
             tracking_mode,
+            default_disposal_method: parse_disposal_method(&db.default_disposal_method),
         }
     }
 }
@@ -98,6 +109,7 @@ impl From<NewAccount> for AccountDB {
             provider_account_id: domain.provider_account_id,
             is_archived: domain.is_archived,
             tracking_mode,
+            default_disposal_method: domain.default_disposal_method.as_str().to_string(),
         }
     }
 }
@@ -130,6 +142,12 @@ impl From<AccountUpdate> for AccountDB {
             provider_account_id: domain.provider_account_id,
             is_archived: domain.is_archived.unwrap_or(false),
             tracking_mode,
+            // Empty string signals "preserve existing" to the repository
+            // update path (parallel to how `currency` is handled above).
+            default_disposal_method: domain
+                .default_disposal_method
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default(),
         }
     }
 }

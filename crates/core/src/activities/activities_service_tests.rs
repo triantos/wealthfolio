@@ -685,6 +685,7 @@ mod tests {
                 import_run_id: None,
                 is_user_modified: false,
                 needs_review: false,
+                disposal_method: None,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             };
@@ -753,6 +754,7 @@ mod tests {
                     import_run_id: None,
                     is_user_modified: false,
                     needs_review: false,
+                    disposal_method: None,
                     created_at: Utc::now(),
                     updated_at: Utc::now(),
                 });
@@ -905,6 +907,7 @@ mod tests {
             provider_account_id: None,
             is_archived: false,
             tracking_mode: crate::accounts::TrackingMode::NotSet,
+            default_disposal_method: Default::default(),
         }
     }
 
@@ -3834,6 +3837,7 @@ mod tests {
                 import_run_id: None,
                 is_user_modified: false,
                 needs_review: false,
+                disposal_method: None,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             });
@@ -4038,6 +4042,7 @@ mod tests {
                 import_run_id: None,
                 is_user_modified: false,
                 needs_review: false,
+                disposal_method: None,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             });

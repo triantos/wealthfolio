@@ -809,7 +809,9 @@ impl crate::lots::LotRepositoryTrait for MockLotRepository {
         Ok(())
     }
 
-    async fn get_open_position_quantities(&self) -> Result<std::collections::HashMap<String, rust_decimal::Decimal>> {
+    async fn get_open_position_quantities(
+        &self,
+    ) -> Result<std::collections::HashMap<String, rust_decimal::Decimal>> {
         Ok(std::collections::HashMap::new())
     }
 
@@ -1094,6 +1096,7 @@ fn create_test_account(id: &str, account_type: &str, currency: &str) -> Account 
         provider_account_id: None,
         is_archived: false,
         tracking_mode: crate::accounts::TrackingMode::NotSet,
+        default_disposal_method: Default::default(),
     }
 }
 
@@ -2033,6 +2036,7 @@ fn create_test_account_with_archive_state(
         provider_account_id: None,
         is_archived,
         tracking_mode: crate::accounts::TrackingMode::NotSet,
+        default_disposal_method: Default::default(),
     }
 }
 

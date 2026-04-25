@@ -107,6 +107,7 @@ impl HoldingsCalculator {
         lot: &super::Lot,
         close_date: &str,
         activity_id: &str,
+        disposal_method: crate::lots::DisposalMethod,
     ) {
         let orig_qty = if lot.original_quantity.is_zero() {
             lot.quantity
@@ -127,6 +128,7 @@ impl HoldingsCalculator {
                     cost_per_unit: lot.acquisition_price.to_string(),
                     total_cost_basis: lot.cost_basis.to_string(),
                     fee_allocated: lot.acquisition_fees.to_string(),
+                    disposal_method,
                 });
         }
     }
@@ -417,10 +419,18 @@ impl HoldingsCalculator {
         }
 
         if let Some(position) = state.positions.get_mut(asset_id) {
-            let reduction = position.reduce_lots_fifo(activity.qty())?;
+            let method = activity.disposal_method.unwrap_or_default();
+            let reduction = position.reduce_lots(method, activity.qty())?;
             let close_date = self.activity_local_date(activity).to_string();
             for lot in &reduction.fully_consumed_lots {
-                self.record_lot_closure(&state.account_id, asset_id, lot, &close_date, &activity.id);
+                self.record_lot_closure(
+                    &state.account_id,
+                    asset_id,
+                    lot,
+                    &close_date,
+                    &activity.id,
+                    method,
+                );
             }
         } else {
             warn!(
@@ -836,13 +846,21 @@ impl HoldingsCalculator {
                     );
                 }
 
-                let reduction = position.reduce_lots_fifo(activity.qty())?;
+                let method = activity.disposal_method.unwrap_or_default();
+                let reduction = position.reduce_lots(method, activity.qty())?;
                 let cost_basis_removed = reduction.cost_basis_removed;
 
                 // Record fully consumed lots as closed
                 let close_date = activity_date.to_string();
                 for lot in &reduction.fully_consumed_lots {
-                    self.record_lot_closure(&state.account_id, asset_id, lot, &close_date, &activity.id);
+                    self.record_lot_closure(
+                        &state.account_id,
+                        asset_id,
+                        lot,
+                        &close_date,
+                        &activity.id,
+                        method,
+                    );
                 }
 
                 // Cache removed lots for paired TRANSFER_IN (lot-level transfer)
@@ -910,7 +928,12 @@ impl HoldingsCalculator {
                 let asset_id = activity.asset_id.as_deref().unwrap_or("");
                 if let Some(position) = state.positions.get_mut(asset_id) {
                     let qty = activity.qty();
-                    let reduction = position.reduce_lots_fifo(qty)?;
+                    // OPTION_EXPIRY adjustments don't carry a user-selected
+                    // disposal method; default to FIFO. The user-facing
+                    // disposal_method on the underlying SELL is what they
+                    // would have controlled.
+                    let method = activity.disposal_method.unwrap_or_default();
+                    let reduction = position.reduce_lots(method, qty)?;
                     let close_date = self.activity_local_date(activity).to_string();
                     for lot in &reduction.fully_consumed_lots {
                         self.record_lot_closure(
@@ -919,6 +942,7 @@ impl HoldingsCalculator {
                             lot,
                             &close_date,
                             &activity.id,
+                            method,
                         );
                     }
                     debug!(
